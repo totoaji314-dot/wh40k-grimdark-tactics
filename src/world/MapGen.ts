@@ -24,6 +24,8 @@ export class BattleMap {
   losH = new Float32Array(GN * GN);
   trench = new Uint8Array(GN * GN);
   placements: Placement[] = [];
+  /** purely visual city blocks beyond the battlefield (never touch the simulation grids) */
+  backdrop: Placement[] = [];
   craters: { x: number; z: number; r: number }[] = [];
   trenches: [number, number][][] = [];
   fires: { x: number; z: number; y: number; s: number }[] = [];
@@ -38,6 +40,44 @@ export class BattleMap {
     this.baseTerrain(seed);
     if (type === 'ruins') this.layoutRuins(); else this.layoutTrenches();
     this.finish();
+    this.layoutBackdrop(seed);
+  }
+
+  /** Ground height including the visual outskirts beyond the simulated map: a low rubble plain, so the
+   *  ruined city and the hive skyline behind it stay visible instead of a wall of hills. */
+  farHeight(x: number, z: number) {
+    if (Math.abs(x) <= HALF && Math.abs(z) <= HALF) return this.heightAt(x, z);
+    const e = Math.max(Math.abs(x), Math.abs(z)) - HALF;
+    const cx = Math.max(-HALF, Math.min(HALF, x)), cz = Math.max(-HALF, Math.min(HALF, z));
+    return this.heightAt(cx, cz) + e * 0.045 + (fbm(x / 26, z / 26, 3, 9) - 0.5) * Math.min(e, 30) * 0.3;
+  }
+
+  /** Ring of ruined hive blocks around the battlefield (separate RNG so the battle layout is unchanged). */
+  private layoutBackdrop(seed: number) {
+    const r = mulberry32(seed * 7 + 901 + (this.type === 'trenches' ? 3 : 0));
+    const B = 234, O = 336, STEP = 30;
+    const add = (piece: string, x: number, z: number, rot: number) => this.backdrop.push({ piece, x, z, rot, y: this.farHeight(x, z) - 0.4 });
+    // landmark cathedral far beyond the enemy lines, plus a ring of hive blocks on a jittered street grid
+    const cx = this.type === 'ruins' ? -95 : 110;
+    add('cathedral', cx, -296, 0.04);
+    for (let gx = -O; gx <= O; gx += STEP) for (let gz = -O; gz <= O; gz += STEP) {
+      const x = gx + (r() - 0.5) * 10, z = gz + (r() - 0.5) * 10;
+      const m = Math.max(Math.abs(x), Math.abs(z));
+      const k = r(), rot = Math.floor(r() * 4) * Math.PI / 2 + (r() - 0.5) * 0.12;
+      if (m < B || m > O || k < 0.22) continue;
+      if (Math.abs(x - cx) < 40 && Math.abs(z + 296) < 50) continue;
+      const depth = (m - B) / (O - B);
+      const piece = k < 0.42 ? 'hab' : k < 0.55 ? 'manufactorum' : k < 0.66 ? 'chapel' : k < 0.74 ? (depth > 0.35 ? 'smokestack' : 'watchtower') : k < 0.9 ? 'ruinrow' : 'hab';
+      if (piece === 'ruinrow') {
+        // a broken street front: three wall sections and pillars
+        const c = Math.cos(rot), s = Math.sin(rot);
+        for (let w = -1; w <= 1; w++) add(r() < 0.6 ? 'wall_ruin' : 'wall_ruin2', x + c * w * 8.6, z - s * w * 8.6, rot);
+        add('pillar', x + c * 12.9, z - s * 12.9, rot);
+        continue;
+      }
+      add(piece, x, z, rot);
+      if (piece === 'hab' && r() < 0.5) add('hab', x + 13 * Math.cos(rot), z - 13 * Math.sin(rot), rot);
+    }
   }
 
   // ---------------------------------------------------------------- queries
@@ -90,11 +130,11 @@ export class BattleMap {
   private baseTerrain(seed: number) {
     for (let j = 0; j < HN; j++) for (let i = 0; i < HN; i++) {
       const x = i - HALF, z = j - HALF;
-      let h = (fbm(x / 140, z / 140, 4, seed) - 0.5) * 7 + (fbm(x / 35, z / 35, 3, seed + 5) - 0.5) * 1.2;
+      let h = (fbm(x / 140, z / 140, 4, seed) - 0.5) * 8 + (fbm(x / 35, z / 35, 3, seed + 5) - 0.5) * 1.6 + (fbm(x / 7, z / 7, 2, seed + 13) - 0.5) * 0.35;
       const edge = Math.max(0, Math.max(Math.abs(x), Math.abs(z)) - PLAY + 10) / 30;
       h += edge * edge * 6; // rise toward the map edge so the battlefield sits in a shallow bowl
       this.height[j * HN + i] = h;
-      this.mud[j * HN + i] = Math.max(0, fbm(x / 40, z / 40, 4, seed + 9) - 0.48) * 3;
+      this.mud[j * HN + i] = Math.max(0, fbm(x / 34, z / 34, 4, seed + 9) - 0.44) * 3;
     }
   }
 
@@ -255,6 +295,7 @@ export class BattleMap {
     this.place('smokestack', -88, -78, 0);
     this.place('smokestack', 92, -100, 0);
     this.place('monument', 0, 16, 0);
+    this.place('cathedral', 62, -152, 0);
     this.wallRow(-20, -95, -20, -32);
     this.wallRow(20, -100, 20, -38);
     this.wallRow(-95, -10, -28, -10, 0.85);
@@ -325,6 +366,7 @@ export class BattleMap {
     this.place('manufactorum', -56, -98, 0);
     this.place('hab', 60, -92, 0);
     this.place('chapel', 0, -78, 0);
+    this.place('cathedral', -70, -152, 0);
     this.place('smokestack', -104, -128, 0); this.place('smokestack', 110, -138, 0);
     this.wallRow(-36, -66, -36, -20, 0.9); this.wallRow(34, -60, 34, -22, 0.9);
     this.scatter('rubble', 18, -130, 130, -110, -10);

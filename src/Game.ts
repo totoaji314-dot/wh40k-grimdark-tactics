@@ -7,6 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { BattleMap, PLAY, HALF, GN, CELL } from './world/MapGen';
 import { buildTerrain } from './world/Terrain';
 import { buildEnv, loadEnvFootprints } from './world/Env';
+import { buildScatter } from './world/Scatter';
 import { buildSky } from './render/Sky';
 import { UnitLibrary } from './render/UnitLibrary';
 import { UnitRenderer, type Figure } from './render/UnitRenderer';
@@ -21,6 +22,8 @@ import type { Audio } from './core/Audio';
 import { PRESETS, type QualityLevel, type Settings } from './core/Settings';
 
 const STEP = 1 / 30;
+/** Low dusk sun from the west-north-west: raking light and long shadows over the battlefield. */
+const SUN_DIR = new THREE.Vector3(-0.86, 0.33, -0.3).normalize();
 const BASE = import.meta.env.BASE_URL;
 
 export interface BattleOptions { scenario: Scenario; difficulty: number; scale: number; quality: QualityLevel; seed?: number }
@@ -80,6 +83,10 @@ export class Game {
   private preset;
   private hover: Unit | null = null;
   private flash = 0;
+  private fireLights: THREE.PointLight[] = [];
+  private scatter: ReturnType<typeof buildScatter> | null = null;
+  private clock = 0;
+  fireSpots: { x: number; y: number; z: number; s: number }[] = [];
   onExit?: () => void;
   onResult?: (won: boolean) => void;
 
@@ -127,20 +134,33 @@ export class Game {
     this.scene.add(terrain);
     await tick();
     progress(0.78, '건물과 엄폐물 배치 중');
-    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows);
+    const density = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 0.6 : 0.3;
+    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25);
     this.scene.add(env.group);
+    console.info('[env] triangles', env.tris, 'backdrop blocks', this.map.backdrop.length);
+    this.scatter = buildScatter(this.map, density, this.opts.quality === 'high' && P.shadowSize > 0 && this.settings.shadows);
+    this.scene.add(this.scatter.group);
     progress(0.9, '조명과 대기 효과');
     this.setupLights();
     this.fx = new Effects(P.particles, P.lights);
     this.scene.add(this.fx.group);
-    for (const f of this.map.fires) this.fx.addFire(f.x, f.y, f.z, f.s);
+    for (const f of this.map.fires) { this.fx.addFire(f.x, f.y, f.z, f.s); this.fireSpots.push(f); }
     for (const p of this.map.placements) {
       if (p.piece === 'smokestack') this.fx.addStack(p.x, p.y + 37, p.z, 1.3);
       if (p.piece === 'manufactorum') {
         const c = Math.cos(p.rot), s = Math.sin(p.rot);
         for (const [lx, lz] of [[10, -3], [5, -3]]) this.fx.addStack(p.x + lx * c + lz * s, p.y + 23, p.z - lx * s + lz * c, 0.9);
       }
-      if (p.piece === 'wreck' && Math.random() < 0.7) this.fx.addFire(p.x, p.y + 2.2, p.z, 0.8);
+      if (p.piece === 'wreck' && Math.random() < 0.7) { this.fx.addFire(p.x, p.y + 2.2, p.z, 0.8); this.fireSpots.push({ x: p.x, y: p.y + 2.2, z: p.z, s: 0.8 }); }
+    }
+    // the burning city beyond the battlefield: a few big blazes and the tallest stacks still smoking
+    {
+      let fires = 0, stacks = 0;
+      const far = density === 1 ? 5 : density === 0.6 ? 3 : 1;
+      for (const p of this.map.backdrop) {
+        if (p.piece === 'smokestack' && stacks < far) { this.fx.addStack(p.x, p.y + 37, p.z, 1.6); stacks++; }
+        else if ((p.piece === 'hab' || p.piece === 'manufactorum') && fires < far && (Math.abs(p.x * 7.3 + p.z * 3.1) % 5) < 1) { this.fx.addFire(p.x, p.y + 1, p.z, 3.2); fires++; }
+      }
     }
     this.makeMarkers();
     this.rig = new CameraRig(this.camera, (x, z) => this.map.heightAt(x, z));
@@ -177,18 +197,20 @@ export class Game {
 
   private setupLights() {
     const P = this.preset;
-    this.scene.background = new THREE.Color(0x5a4a3e);
-    this.scene.fog = new THREE.FogExp2(0x5e4e42, 0.0029);
-    this.scene.add(new THREE.HemisphereLight(0xc4bcb0, 0x4a3c30, 1.35));
-    const amb = new THREE.AmbientLight(0x40384a, 0.35); this.scene.add(amb);
-    const sunDir = new THREE.Vector3(-0.72, 0.52, 0.42).normalize();
-    this.sun = new THREE.DirectionalLight(0xffd6a6, 3.1);
+    // dusk: low warm sun raking across the field, cool sky fill, warm haze
+    this.scene.background = new THREE.Color(0x6a5a52);
+    this.scene.fog = new THREE.FogExp2(0x7a6a60, 0.0031);
+    this.scene.add(new THREE.HemisphereLight(0x96a2bc, 0x56402e, 1.55));
+    const amb = new THREE.AmbientLight(0x343c50, 0.4); this.scene.add(amb);
+    const sunDir = SUN_DIR.clone();
+    this.sun = new THREE.DirectionalLight(0xffb070, 3.6);
     this.sun.position.copy(sunDir).multiplyScalar(200);
     if (P.shadowSize > 0 && this.settings.shadows) {
       this.sun.castShadow = true;
       this.sun.shadow.mapSize.set(P.shadowSize, P.shadowSize);
       this.sun.shadow.bias = -0.00025; this.sun.shadow.normalBias = 0.04;
-      this.sun.shadow.camera.near = 1; this.sun.shadow.camera.far = 600;
+      this.sun.shadow.camera.near = 1; this.sun.shadow.camera.far = 900;
+      this.sun.shadow.radius = 2.5;
     }
     this.scene.add(this.sun, this.sun.target);
     this.sky = buildSky(sunDir);
@@ -198,18 +220,29 @@ export class Game {
     const eg = new THREE.SphereGeometry(10, 32, 16);
     const cols: number[] = [];
     const pa = eg.attributes.position;
-    const top = new THREE.Color(0x8a8a90), hor = new THREE.Color(0xc89060), gnd = new THREE.Color(0x3a3028), tmp = new THREE.Color();
-    for (let i = 0; i < pa.count; i++) { const y = pa.getY(i) / 10; tmp.copy(y > 0 ? hor : gnd).lerp(y > 0 ? top : gnd, Math.min(1, Math.abs(y) * 2.2)); const sunK = Math.max(0, new THREE.Vector3(pa.getX(i), pa.getY(i), pa.getZ(i)).normalize().dot(sunDir)); tmp.lerp(new THREE.Color(0xffe0b0), Math.pow(sunK, 12) * 0.9); cols.push(tmp.r, tmp.g, tmp.b); }
+    const top = new THREE.Color(0x6e7a94), horCool = new THREE.Color(0x8a8890), horWarm = new THREE.Color(0xd8925a), gnd = new THREE.Color(0x3a2e26), tmp = new THREE.Color(), hor = new THREE.Color(), dv = new THREE.Vector3();
+    for (let i = 0; i < pa.count; i++) {
+      dv.set(pa.getX(i), pa.getY(i), pa.getZ(i)).normalize();
+      const y = dv.y;
+      const az = Math.max(0, new THREE.Vector2(dv.x, dv.z).normalize().dot(new THREE.Vector2(sunDir.x, sunDir.z).normalize()));
+      hor.copy(horCool).lerp(horWarm, az * az);
+      tmp.copy(y > 0 ? hor : gnd).lerp(y > 0 ? top : gnd, Math.min(1, Math.abs(y) * 2.2));
+      tmp.lerp(new THREE.Color(0xffd8a0), Math.pow(Math.max(0, dv.dot(sunDir)), 10) * 0.9);
+      cols.push(tmp.r, tmp.g, tmp.b);
+    }
     eg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     envScene.add(new THREE.Mesh(eg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
     const pm = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pm.fromScene(envScene, 0.04).texture;
-    this.scene.environmentIntensity = 0.85;
+    this.scene.environmentIntensity = 0.75;
     pm.dispose();
     this.renderer.shadowMap.enabled = P.shadowSize > 0 && this.settings.shadows;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.2;
+    // persistent flickering firelight around the burning wrecks / fires nearest the camera
+    const nFire = P.lights >= 8 ? 4 : P.lights >= 4 ? 2 : 0;
+    for (let i = 0; i < nFire; i++) { const l = new THREE.PointLight(0xff7a30, 0, 16, 1.6); this.scene.add(l); this.fireLights.push(l); }
     this.audio.onDistantBoom = () => { this.flash = 0.6 + Math.random() * 0.4; };
   }
 
@@ -280,6 +313,9 @@ export class Game {
     this.updateRings();
     this.fx.update(this.paused ? 0 : dt * this.speed, this.camera.position, [1.2, -0.6]);
     this.updateSun();
+    this.updateFireLights();
+    this.clock += dt;
+    this.scatter?.update(this.clock);
     this.sky.dome.position.copy(this.camera.position);
     const su = (this.sky.dome.material as THREE.ShaderMaterial).uniforms;
     su.uTime.value += dt; this.flash = Math.max(0, this.flash - dt * 2); su.uFlash.value = this.flash * 0.6;
@@ -320,10 +356,25 @@ export class Game {
     // snap to shadow texels to avoid shimmering
     const texel = (half * 2) / this.sun.shadow.mapSize.x;
     const sx = Math.round(t.x / texel) * texel, sz = Math.round(t.z / texel) * texel;
-    const dir = new THREE.Vector3(-0.72, 0.52, 0.42).normalize();
+    const dir = SUN_DIR;
     this.sun.target.position.set(sx, t.y, sz);
     this.sun.position.set(sx + dir.x * 250, t.y + dir.y * 250, sz + dir.z * 250);
     this.sun.target.updateMatrixWorld();
+  }
+
+  private fireT = 0;
+  private updateFireLights() {
+    if (!this.fireLights.length) return;
+    this.fireT += 0.016;
+    const f = this.rig.focusPoint;
+    const near = this.fireSpots.map((s) => ({ s, d: (s.x - f.x) ** 2 + (s.z - f.z) ** 2 })).sort((a, b) => a.d - b.d);
+    this.fireLights.forEach((l, i) => {
+      const n = near[i];
+      if (!n || n.d > 160 * 160) { l.intensity = 0; return; }
+      l.position.set(n.s.x, n.s.y + 1.2, n.s.z);
+      const fl = 0.75 + 0.25 * Math.sin(this.fireT * 13 + i * 2.1) * Math.sin(this.fireT * 7.3 + i);
+      l.intensity = 9 * n.s.s * fl;
+    });
   }
 
   private updateRings() {

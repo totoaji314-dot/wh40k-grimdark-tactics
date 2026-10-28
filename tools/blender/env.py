@@ -159,6 +159,10 @@ def gothic_wall(w=8.0, h=10.0, t=1.0, ruined=False, seed=1):
     for x in (-w / 4, w / 4):
         sill = rbox(2.2, t + 0.3, 0.25, bev=0.04)
         parts.append((xf(sill, (x, 0, 2.15)), 'stone'))
+        # gothic tracery: central mullion, transom and a ring under the arch point
+        parts.append((xf(rbox(0.16, t * 0.5, 4.2, bev=0.02), (x, 0, 4.3)), 'stone'))
+        parts.append((xf(rbox(1.9, t * 0.5, 0.14, bev=0.02), (x, 0, 4.6)), 'stone'))
+        parts.append((xf(torus(0.42, 0.07, seg=16, seg2=4), (x, 0, 6.35), rot=(90, 0, 0)), 'stone'))
         grill = array(rbox(0.06, 0.08, 4.2), 4, (0.42, 0, 0))
         parts.append((xf(grill, (x - 0.63, 0, 4.3)), 'metal'))
         gl = arch(1.85, 5.55, 0.04)
@@ -328,6 +332,116 @@ def p_chapel():
     parts.append((xf(rbox(2.4, 1.4, 1.2, bev=0.08), (0, D / 2 - 2.5, 0.6)), 'stone'))
     parts.append((xf(rbox(2.6, 1.6, 0.2, bev=0.03), (0, D / 2 - 2.5, 1.3)), 'brass'))
     parts += rubble(22, 5, 13, 1.0)
+    return parts
+
+
+@piece('cathedral', (42, 66), cover=0.8, height=40)
+def p_cathedral():
+    """Ruined Ecclesiarchy cathedral: buttressed nave, flying buttresses, rose-window facade, twin towers (one shattered)."""
+    W, L, H, T = 24.0, 56.0, 22.0, 1.6
+    parts = []
+    bays = 7
+    for sx in (-1, 1):
+        wall = rbox(T, L, H); xf(wall, (sx * W / 2, 0, H / 2))
+        cuts = []
+        for i in range(bays):
+            y = -L / 2 + (i + 0.5) * L / bays
+            a = arch(4.0, 13.0, 4.0); xf(a, rot=(0, 0, 90)); xf(a, (sx * W / 2, y, 4.5)); cuts.append(a)
+        if sx > 0:
+            cuts.append(xf(xf(jagged_top(L, T, 0, 7.0, 91), rot=(0, 0, 90)), (W / 2, 0, H * 0.62)))
+        wall = boolean(wall, cuts)
+        parts.append((wall, 'stone'))
+        parts.append((xf(rbox(T + 0.8, L, 1.4, bev=0.1), (sx * W / 2, 0, 0.7)), 'stone'))
+        for i in range(bays + 1):
+            y = -L / 2 + i * L / bays
+            ph = 26.0 if not (sx > 0 and 2 < i < 6) else 15.0
+            parts.append((xf(rbox(2.2, 3.0, ph, bev=0.12, taper=(0.75, 0.8)), (sx * (W / 2 + 1.2), y, ph / 2)), 'stone'))
+            if ph > 20:
+                parts.append((xf(cyl(1.0, 6.0, seg=4, r2=0.0), (sx * (W / 2 + 1.2), y, ph + 3.0), rot=(0, 0, 45)), 'stone'))
+                for k in (-1, 1):
+                    parts.append((xf(cyl(0.4, 3.0, seg=4, r2=0.0), (sx * (W / 2 + 1.2) + k * 0.7, y, ph - 1.0), rot=(0, 0, 45)), 'stone'))
+            # flying buttress: outer pier + arching strut onto the nave wall
+            if i not in (0, bays) and not (sx > 0 and 2 < i < 6):
+                parts.append((xf(rbox(2.0, 2.4, 16.0, bev=0.1, taper=(0.7, 0.8)), (sx * (W / 2 + 8.5), y, 8.0)), 'stone'))
+                parts.append((xf(cyl(0.8, 4.0, seg=4, r2=0.0), (sx * (W / 2 + 8.5), y, 18.0), rot=(0, 0, 45)), 'stone'))
+                prof = []
+                for k in range(9):
+                    tt = k / 8
+                    ang = tt * math.pi / 2
+                    prof.append((math.cos(ang) * 6.6, math.sin(ang) * 4.5))
+                inner = [(x * 0.82, z * 0.7 - 0.9) for (x, z) in reversed(prof)]
+                fb = extrude(prof + inner, 1.0)
+                # high end against the nave wall, low end on the outer pier
+                xf(fb, scale=(sx, 1, 1))
+                if sx < 0:
+                    import bmesh as _b
+                    _b.ops.reverse_faces(fb, faces=fb.faces)
+                xf(fb, (sx * (W / 2 + 1.5), y, 14.5))
+                parts.append((fb, 'stone'))
+    # transverse rib arches over the nave (roof gone)
+    for i in range(1, bays):
+        if 2 < i < 6:
+            continue
+        y = -L / 2 + i * L / bays
+        rib = torus(W / 2, 0.45, seg=24, seg2=5, arc=180)
+        xf(rib, rot=(90, 0, 0), scale=(1, 1, 0.9)); xf(rib, (0, y, H - 1.0))
+        parts.append((rib, 'stone'))
+    # facade with rose window and portal
+    fy = -L / 2 - 1.0
+    face = rbox(W + 6, 2.4, 30.0); xf(face, (0, fy, 15.0))
+    gable = extrude([(-(W + 6) / 2, 0), ((W + 6) / 2, 0), (0, 9.0)], 2.4); xf(gable, (0, fy, 30.0))
+    face = join_bm(face, gable)
+    portal = arch(8.0, 15.0, 6.0); xf(portal, (0, fy, 0.0))
+    rose = cyl(4.4, 6.0, seg=24); xf(rose, rot=(90, 0, 0)); xf(rose, (0, fy, 22.5))
+    face = boolean(face, [portal, rose])
+    parts.append((face, 'stone'))
+    parts.append((xf(torus(4.4, 0.35, seg=32, seg2=6), (0, fy - 0.9, 22.5), rot=(90, 0, 0)), 'stone'))
+    for k in range(12):
+        sp = rbox(0.25, 0.4, 8.6); xf(sp, rot=(0, k * 15, 0)); xf(sp, (0, fy - 0.6, 22.5))
+        parts.append((sp, 'stone'))
+    parts.append((xf(torus(1.2, 0.22, seg=20, seg2=5), (0, fy - 0.8, 22.5), rot=(90, 0, 0)), 'brass'))
+    parts.append((xf(cyl(4.3, 0.15, seg=24), (0, fy + 0.4, 22.5), rot=(90, 0, 0)), 'glass'))
+    for r in range(3):
+        ar = torus(4.0 + r * 0.7, 0.3, seg=20, seg2=4, arc=180); xf(ar, rot=(90, 0, 0), scale=(1, 1, 1.5)); xf(ar, (0, fy - 1.4 - r * 0.4, 10.0))
+        parts.append((ar, 'stone'))
+    for sx in (-1, 1):
+        st = rbox(1.2, 1.2, 3.4, bev=0.08); xf(st, (sx * 6.5, fy - 2.4, 6.0)); parts.append((st, 'stone'))
+        parts.append((xf(ellipsoid(0.55, 0.45, 1.3, 10, 8), (sx * 6.5, fy - 2.4, 8.9)), 'stone'))
+        parts.append((xf(sphere(0.35, 8, 6), (sx * 6.5, fy - 2.4, 10.4)), 'stone'))
+    # twin towers: stacked tiers, belfry openings, spire; the left one is shattered
+    for sx in (-1, 1):
+        tx = sx * (W / 2 + 1.5)
+        broken = sx < 0
+        tiers = [(8.0, 20.0), (7.0, 12.0), (6.0, 10.0)]
+        z = 0.0
+        for k, (wd, ht) in enumerate(tiers):
+            if broken and k == 2:
+                break
+            tw = rbox(wd, wd, ht, bev=0.12); xf(tw, (tx, fy + 1.0, z + ht / 2))
+            if k >= 1:
+                cuts = []
+                for a in range(4):
+                    bf = arch(1.6, 6.0, wd + 2); xf(bf, rot=(0, 0, a * 90)); xf(bf, (tx, fy + 1.0, z + 2.5)); cuts.append(bf)
+                if broken:
+                    cuts.append(xf(jagged_top(wd + 2, wd + 2, 0, 3.5, 77), (tx, fy + 1.0, z + ht * 0.65)))
+                tw = boolean(tw, cuts)
+            parts.append((tw, 'stone'))
+            parts.append((xf(rbox(wd + 0.8, wd + 0.8, 0.6, bev=0.08), (tx, fy + 1.0, z + ht)), 'stone'))
+            for (cx, cy) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                if broken and k == 1:
+                    continue
+                parts.append((xf(cyl(0.45, 3.2, seg=4, r2=0.0), (tx + cx * wd / 2, fy + 1.0 + cy * wd / 2, z + ht + 1.6), rot=(0, 0, 45)), 'stone'))
+            z += ht
+        if not broken:
+            parts.append((xf(cyl(3.6, 26.0, seg=8, r2=0.15), (tx, fy + 1.0, z + 13.0), rot=(0, 0, 22.5)), 'roof'))
+            parts.append((xf(rbox(0.3, 0.3, 3.0), (tx, fy + 1.0, z + 27.5)), 'brass'))
+            parts.append((xf(rbox(1.6, 0.3, 0.3), (tx, fy + 1.0, z + 28.2)), 'brass'))
+    # apse
+    apse = lathe([(10.0, 0.0), (10.0, 18.0), (9.0, 18.5)], seg=20, arc=180)
+    xf(apse, rot=(0, 0, 180)); xf(apse, (0, L / 2, 0))
+    parts.append((apse, 'stone'))
+    parts += rubble(40, 14, 61, 1.8)
+    parts += [(xf(b, (W / 2 + 4, 0, 0)), m) for b, m in rubble(30, 8, 67, 2.2)]
     return parts
 
 

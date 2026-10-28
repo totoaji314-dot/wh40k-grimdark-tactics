@@ -82,8 +82,9 @@ export function terrainLayer(name: typeof TERRAIN_LAYERS[number], size: number):
       const n = fbm(u * P, v * P, 6, 41, P);
       const crack = sstep(0.03, 0.0, Math.abs(fbm(u * 6, v * 6, 4, 13, 6) - 0.5)) * 0.9;
       const stain = fbm(u * 3, v * 3, 4, 61, 3);
-      const c = lerp3(hex(0x6c6a64), hex(0x8e8a80), n);
-      const k = (0.55 + 0.45 * seam) * (1 - crack * 0.6) * (0.85 + 0.25 * stain);
+      const c = lerp3(hex(0x55524c), hex(0x726d64), n);
+      const grime = sstep(0.35, 0.75, fbm(u * 5, v * 5, 4, 91, 5));
+      const k = (0.6 + 0.4 * seam) * (1 - crack * 0.6) * (0.8 + 0.25 * stain) * (1 - grime * 0.35);
       return [c[0] * k, c[1] * k, c[2] * k * 0.98, seam * 0.6 - crack * 0.5 + n * 0.15, 0.78];
     }, 2.0);
     case 'ash': return make(size, (u, v) => {

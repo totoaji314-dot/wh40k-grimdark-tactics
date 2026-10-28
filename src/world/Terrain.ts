@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { BattleMap, EXTENT, HALF, HN } from './MapGen';
 import { TERRAIN_LAYERS, terrainLayer, arrayTexture } from './textures';
-import { fbm } from './noise';
 
 /**
  * Terrain mesh with a 5-layer splat shader (dirt, mud, rubble, ferrocrete road, ash) using
@@ -19,9 +18,8 @@ export function buildTerrain(map: BattleMap, res: number, texSize: number) {
     let h: number;
     if (Math.abs(x) <= HALF && Math.abs(z) <= HALF) h = map.heightAt(x, z);
     else {
-      // outskirts: rolling ash wasteland rising toward the horizon
-      const e = Math.max(Math.abs(x), Math.abs(z)) - HALF;
-      h = map.heightAt(Math.max(-HALF, Math.min(HALF, x)), Math.max(-HALF, Math.min(HALF, z))) + e * 0.25 + (fbm(x / 40, z / 40, 3, 9) - 0.5) * e * 0.3;
+      // outskirts: low rubble plain under the backdrop city blocks
+      h = map.farHeight(x, z);
       if (Math.max(Math.abs(x), Math.abs(z)) >= outer - 1) h -= 10;
     }
     pos.setY(i, h);

@@ -41,7 +41,7 @@ function toFloat(g: THREE.BufferGeometry) {
   return g;
 }
 
-export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean) {
+export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean, backdrop = 1) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync(base + 'env.glb');
@@ -58,9 +58,12 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
     if (!pieces.has(pieceName)) pieces.set(pieceName, []);
     pieces.get(pieceName)!.push([matName, g]);
   });
-  const byMat = new Map<string, THREE.BufferGeometry[]>();
+  const near = new Map<string, THREE.BufferGeometry[]>();
+  const far = new Map<string, THREE.BufferGeometry[]>();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
-  for (const p of map.placements) {
+  // the backdrop ring is thinned on lower quality settings (every other block on medium, a quarter on low)
+  const keep = map.backdrop.filter((_, i) => i === 0 || (i * 0.618034) % 1 < backdrop);
+  for (const [list, byMat] of [[map.placements, near], [keep, far]] as const) for (const p of list) {
     const parts = pieces.get(p.piece);
     if (!parts) continue;
     q.setFromAxisAngle(up, p.rot);
@@ -99,7 +102,7 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
   group.name = 'env';
   const mats: Partial<Record<EnvMat, THREE.MeshStandardMaterial>> = {};
   let tris = 0;
-  for (const [matName, geos] of byMat) {
+  for (const [byMat, isFar] of [[near, false], [far, true]] as const) for (const [matName, geos] of byMat) {
     const name = (ENV_MATS as readonly string[]).includes(matName) ? matName as EnvMat : 'ferrocrete';
     if (!mats[name]) {
       const t = envTexture(name, texSize);
@@ -122,9 +125,10 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
     if (!merged) continue;
     merged.computeBoundingSphere();
     const mesh = new THREE.Mesh(merged, mats[name]);
-    mesh.castShadow = castShadow && name !== 'glass' && name !== 'lamp';
-    mesh.receiveShadow = true;
-    mesh.name = 'env_' + name;
+    // far blocks sit outside every shadow frustum: skip them in the shadow pass
+    mesh.castShadow = !isFar && castShadow && name !== 'glass' && name !== 'lamp';
+    mesh.receiveShadow = !isFar;
+    mesh.name = (isFar ? 'far_' : 'env_') + name;
     group.add(mesh);
     tris += merged.attributes.position.count / 3;
   }

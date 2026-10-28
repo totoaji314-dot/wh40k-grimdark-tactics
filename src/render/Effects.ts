@@ -72,8 +72,22 @@ void main(){
   vec4 t = texture2D(tAtlas, vUv);
   gl_FragColor = vec4(vCol.rgb * t.rgb, t.a * vCol.a);
   if (gl_FragColor.a < 0.004) discard;
+#ifdef ADDITIVE
+  // additive glow fades out with distance instead of turning into a grey fog-coloured blob
+  #ifdef USE_FOG
+    #ifdef FOG_EXP2
+      float fogF = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+    #else
+      float fogF = smoothstep(fogNear, fogFar, vFogDepth);
+    #endif
+    gl_FragColor.a *= 1.0 - fogF;
+  #endif
+#else
   #include <fog_fragment>
+#endif
 }`;
+
+const SRGB = Float32Array.from({ length: 256 }, (_, i) => new THREE.Color().setRGB(i / 255, 0, 0, THREE.SRGBColorSpace).r);
 
 export class Effects {
   group = new THREE.Group();
@@ -94,7 +108,9 @@ export class Effects {
     this.tracers = this.tracerPool(600);
     for (let i = 0; i < lightCount; i++) {
       const l = new THREE.PointLight(0xffa040, 0, 18, 2);
-      l.visible = false;
+      // stays visible at zero intensity: toggling visibility changes the light count, which makes three.js
+      // recompile every lit shader (a multi-second freeze on D3D/ANGLE the first time a flash appears)
+      l.intensity = 0;
       this.group.add(l);
       this.lights.push({ l, t: 0, max: 0 });
     }
@@ -109,6 +125,7 @@ export class Effects {
     const mat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tAtlas: { value: atlas } }]),
       vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, blending, fog: true,
+      defines: blending === THREE.AdditiveBlending ? { ADDITIVE: '' } : {},
     });
     mat.uniforms.tAtlas.value = atlas;
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
@@ -155,7 +172,8 @@ export class Effects {
     p.vel[i * 3] = o.vx ?? 0; p.vel[i * 3 + 1] = o.vy ?? 0; p.vel[i * 3 + 2] = o.vz ?? 0;
     p.life[i] = 0; p.max[i] = o.life; p.size[i] = o.size; p.grow[i] = o.grow ?? 0;
     const c = o.color;
-    p.col[i * 3] = ((c >> 16) & 255) / 255; p.col[i * 3 + 1] = ((c >> 8) & 255) / 255; p.col[i * 3 + 2] = (c & 255) / 255;
+    // colours are authored as sRGB hex; the particle shader writes linear values
+    p.col[i * 3] = SRGB[(c >> 16) & 255]; p.col[i * 3 + 1] = SRGB[(c >> 8) & 255]; p.col[i * 3 + 2] = SRGB[c & 255];
     p.a0[i] = o.alpha ?? 1; p.frame[i] = o.frame; p.rot[i] = Math.random() * 6.28; p.rotV[i] = o.rotV ?? (Math.random() - 0.5);
     p.grav[i] = o.grav ?? 0; p.drag[i] = o.drag ?? 0;
   }
@@ -178,7 +196,7 @@ export class Effects {
     }
     if (this.camPos.distanceToSquared(this.v.set(x, y, z)) > 160 * 160) return;
     best.l.position.set(x, y, z); best.l.color.setHex(color); best.l.distance = range;
-    best.t = dur; best.max = intensity; best.l.intensity = intensity; best.l.visible = true;
+    best.t = dur; best.max = intensity; best.l.intensity = intensity;
   }
 
   // ------------------------------------------------------------------ high-level effects
@@ -212,7 +230,7 @@ export class Effects {
   explosion(x: number, y: number, z: number, r: number, color = 0xff8030) {
     this.spawn(x, y + 0.3, z, { size: r * 2.2, grow: r * 3, life: 0.28, color, frame: 0, add: true });
     for (let i = 0; i < 6; i++) this.spawn(x, y + 0.3, z, { size: r * (0.6 + Math.random() * 0.5), grow: r * 1.2, life: 0.35 + Math.random() * 0.2, color: 0xffa040, frame: 2, add: true, vx: (Math.random() - 0.5) * 4 * r, vy: 1 + Math.random() * 3, vz: (Math.random() - 0.5) * 4 * r });
-    for (let i = 0; i < 5; i++) this.spawn(x, y + 0.5, z, { size: r * 0.9, grow: r * 1.6, life: 1.6 + Math.random(), color: 0x3a3430, alpha: 0.6, frame: 1, vx: (Math.random() - 0.5) * 2, vy: 1.2 + Math.random(), vz: (Math.random() - 0.5) * 2, drag: 0.8 });
+    for (let i = 0; i < 5; i++) this.spawn(x, y + 0.5, z, { size: r * 0.9, grow: r * 1.6, life: 1.6 + Math.random(), color: 0x403832, alpha: 0.65, frame: 1, vx: (Math.random() - 0.5) * 2, vy: 1.2 + Math.random(), vz: (Math.random() - 0.5) * 2, drag: 0.8 });
     for (let i = 0; i < 8; i++) this.spawn(x, y + 0.3, z, { size: 0.15, life: 0.5 + Math.random() * 0.4, color: 0xffd090, frame: 3, add: true, vx: (Math.random() - 0.5) * 12, vy: 3 + Math.random() * 6, vz: (Math.random() - 0.5) * 12, grav: 14 });
     this.light(x, y + 1, z, color, 12 * r, 0.25, 14 + r * 6);
   }
@@ -227,18 +245,20 @@ export class Effects {
   // ------------------------------------------------------------------ update
   update(dt: number, camPos: THREE.Vector3, wind: [number, number]) {
     this.camPos.copy(camPos);
+    // ambient fires and chimneys may fill at most 65% of the smoke pool, so battle smoke and dust always fit
+    const smokeRoom = () => this.alpha.n < this.alpha.cap * 0.65;
     for (const e of this.emitters) {
       const d2 = (e.x - camPos.x) ** 2 + (e.z - camPos.z) ** 2;
       const far = d2 > 300 * 300;
-      e.acc += dt * (e.kind === 'fire' ? (far ? 3 : 14) * e.s : 4 * e.s);
+      e.acc += dt * (e.kind === 'fire' ? (far ? 3 : 14) * Math.min(e.s, 1.5) : 4 * Math.min(e.s, 1.3));
       while (e.acc > 1) {
         e.acc -= 1;
         if (e.kind === 'fire') {
           this.spawn(e.x + (Math.random() - 0.5) * e.s, e.y + 0.2, e.z + (Math.random() - 0.5) * e.s, { size: 0.9 * e.s, grow: -0.4, life: 0.6 + Math.random() * 0.4, color: Math.random() < 0.5 ? 0xff7020 : 0xffa040, frame: 2, add: true, vy: 2.2 + Math.random(), rotV: 0 });
-          if (Math.random() < 0.6) this.spawn(e.x + (Math.random() - 0.5) * e.s, e.y + 1.4 * e.s, e.z + (Math.random() - 0.5) * e.s, { size: 1.6 * e.s, grow: 2.6 * e.s, life: 5 + Math.random() * 3, color: 0x1e1b1a, alpha: 0.5, frame: 1, vy: 1.8 + Math.random(), vx: wind[0], vz: wind[1], drag: 0.12 });
+          if (Math.random() < 0.6 && smokeRoom()) this.spawn(e.x + (Math.random() - 0.5) * e.s, e.y + 1.4 * e.s, e.z + (Math.random() - 0.5) * e.s, { size: 1.6 * e.s, grow: 2.6 * e.s, life: 5 + Math.random() * 3, color: 0x4a423c, alpha: 0.5, frame: 1, vy: 1.8 + Math.random(), vx: wind[0], vz: wind[1], drag: 0.12 });
           if (Math.random() < 0.15) this.spawn(e.x, e.y + 0.8, e.z, { size: 0.06, life: 2, color: 0xffa040, frame: 0, add: true, vx: (Math.random() - 0.5) * 1.5 + wind[0], vy: 2 + Math.random() * 2, vz: (Math.random() - 0.5) * 1.5 + wind[1] });
-        } else {
-          this.spawn(e.x + (Math.random() - 0.5) * 2, e.y, e.z + (Math.random() - 0.5) * 2, { size: 3.5 * e.s, grow: 4.5 * e.s, life: 10 + Math.random() * 5, color: 0x2a2624, alpha: 0.42, frame: 1, vy: 2.2 + Math.random(), vx: wind[0] * 1.6, vz: wind[1] * 1.6, drag: 0.05 });
+        } else if (smokeRoom()) {
+          this.spawn(e.x + (Math.random() - 0.5) * 2, e.y, e.z + (Math.random() - 0.5) * 2, { size: 3.5 * e.s, grow: 4.5 * e.s, life: 10 + Math.random() * 5, color: 0x544c46, alpha: 0.4, frame: 1, vy: 2.2 + Math.random(), vx: wind[0] * 1.6, vz: wind[1] * 1.6, drag: 0.05 });
         }
       }
     }
@@ -267,7 +287,7 @@ export class Effects {
     T.mesh.count = n;
     for (const a of [T.aA, T.aB, T.aC]) { a.clearUpdateRanges(); a.addUpdateRange(0, n * 4); a.needsUpdate = true; }
     for (const L of this.lights) {
-      if (L.t <= 0) { L.l.visible = false; continue; }
+      if (L.t <= 0) { L.l.intensity = 0; continue; }
       L.t -= dt;
       L.l.intensity = Math.max(0, L.max * (L.t > 0 ? 1 : 0));
     }
