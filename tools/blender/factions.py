@@ -617,7 +617,7 @@ def krieg_parts(rig, kind):
 
 # =============================================================================== ORKS
 def ork_materials():
-    mat_node_setup('skin', srgb(0x4f7a2c), rough=0.55, metal=0.0, grime=0.4, noise_scale=10, bump=0.4, hue_var=0.09)
+    mat_node_setup('skin', srgb(0x44602a), rough=0.55, metal=0.0, grime=0.5, noise_scale=10, bump=0.4, hue_var=0.08)
     mat_node_setup('rust', srgb(0x6a4a34), rough=0.72, metal=0.55, edge=(srgb(0xa8a49a), 0.08), grime=0.6, noise_scale=14, bump=0.35, scratches=1.5)
     mat_node_setup('red', srgb(0x8a1a12), rough=0.6, metal=0.3, edge=(srgb(0x8a8478), 0.08), grime=0.55, noise_scale=14, bump=0.3, scratches=1.2)
     mat_node_setup('check', srgb(0xffffff), rough=0.6, metal=0.3, edge=(srgb(0x8a8478), 0.08), grime=0.55, noise_scale=14, bump=0.3,

@@ -383,7 +383,7 @@ def p_sandbags():
         n = 7 - (row % 2)
         for i in range(n):
             x = -1.8 + i * 0.6 + (0.3 if row % 2 else 0)
-            b = ellipsoid(0.33, 0.24, 0.14, 10, 6)
+            b = ellipsoid(0.33, 0.24, 0.14, 8, 5)
             jitter(b, 0.015, r.randint(0, 999))
             ang = x * 4
             xf(b, (x, 0.08 * math.cos(x * 0.6) + r.uniform(-0.03, 0.03), 0.14 + row * 0.25), rot=(0, 0, ang + r.uniform(-6, 6)))
@@ -561,12 +561,13 @@ for i, ob in enumerate(objs):
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.uv.cube_project(cube_size=2.0, scale_to_bounds=False, correct_aspect=True)
     # subdivide long edges a little so baked vertex AO has resolution
-    bpy.ops.mesh.subdivide(number_cuts=1) if len(ob.data.polygons) < 600 else None
     bpy.ops.object.mode_set(mode='OBJECT')
     ob.data.color_attributes.new('AO', 'BYTE_COLOR', 'POINT')
     ob.data.color_attributes.active_color = ob.data.color_attributes['AO']
 
 setup_cycles(64)
+w = bpy.data.worlds.new('w'); sc.world = w
+w.light_settings.distance = 1.6  # short AO reach: crevices darken, big flat walls stay lit
 sc.render.bake.target = 'VERTEX_COLORS'
 gnd = bpy.data.objects.new('ground', bpy.data.meshes.new('g'))
 bm = bmesh.new(); bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=2000); bm.to_mesh(gnd.data); bm.free()

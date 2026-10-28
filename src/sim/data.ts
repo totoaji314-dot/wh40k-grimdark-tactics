@@ -41,8 +41,8 @@ export interface SoldierDef {
 }
 
 export const WEAPONS: Record<string, WeaponDef> = {
-  bolter: { id: 'bolter', ko: '볼터', range: 62, burst: 3, gap: 0.13, cycle: 4.6, dmg: 21, ap: 0.35, acc: 0.55, falloff: 0.55, suppress: 0.010, speed: 140, tracer: 'bolt', moveFire: true, sound: 'bolter' },
-  heavy_bolter: { id: 'heavy_bolter', ko: '헤비 볼터', range: 95, burst: 7, gap: 0.11, cycle: 4.8, dmg: 19, ap: 0.45, acc: 0.38, falloff: 0.45, suppress: 0.03, speed: 150, tracer: 'hbolt', moveFire: false, sound: 'hbolter' },
+  bolter: { id: 'bolter', ko: '볼터', range: 62, burst: 3, gap: 0.13, cycle: 4.6, dmg: 18, ap: 0.35, acc: 0.55, falloff: 0.55, suppress: 0.010, speed: 140, tracer: 'bolt', moveFire: true, sound: 'bolter' },
+  heavy_bolter: { id: 'heavy_bolter', ko: '헤비 볼터', range: 95, burst: 7, gap: 0.11, cycle: 4.8, dmg: 17, ap: 0.45, acc: 0.38, falloff: 0.45, suppress: 0.03, speed: 150, tracer: 'hbolt', moveFire: false, sound: 'hbolter' },
   plasma: { id: 'plasma', ko: '플라즈마 건', range: 60, burst: 1, gap: 0, cycle: 4.2, dmg: 85, ap: 0.9, acc: 0.6, falloff: 0.4, suppress: 0.05, splash: 1.8, speed: 70, tracer: 'plasma', moveFire: true, sound: 'plasma' },
   bolt_pistol: { id: 'bolt_pistol', ko: '볼트 피스톨', range: 26, burst: 1, gap: 0, cycle: 1.8, dmg: 20, ap: 0.3, acc: 0.55, falloff: 0.5, suppress: 0.008, speed: 120, tracer: 'bolt', moveFire: true, sound: 'bolter' },
   lasgun: { id: 'lasgun', ko: '라스건', range: 72, burst: 1, gap: 0, cycle: 2.9, dmg: 10, ap: 0.05, acc: 0.44, falloff: 0.55, suppress: 0.004, speed: 220, tracer: 'las', moveFire: false, sound: 'las' },
@@ -60,17 +60,17 @@ export const SOLDIERS: Record<string, SoldierDef> = {
   marine_plasma: { id: 'marine_plasma', faction: 'marines', ko: '플라즈마 마린', hp: 130, armor: 0.84, walk: 1.25, run: 4.4, charge: 6.0, weapon: 'plasma', melee: M(66, 62, 34, 0.35, 0.85, 3.0), scale: 1, role: 'special' },
   marine_heavy: { id: 'marine_heavy', faction: 'marines', ko: '헤비 볼터 마린', hp: 130, armor: 0.84, walk: 1.15, run: 3.9, charge: 5.2, weapon: 'heavy_bolter', melee: M(60, 58, 30, 0.35, 0.8, 3.0), scale: 1, role: 'heavy' },
   marine_sergeant: { id: 'marine_sergeant', faction: 'marines', ko: '마린 서전트', hp: 160, armor: 0.86, walk: 1.25, run: 4.4, charge: 6.0, pistol: 'bolt_pistol', melee: M(78, 68, 48, 0.5, 1.1, 3.0), scale: 1.03, role: 'leader', aura: 25 },
-  guardsman: { id: 'guardsman', faction: 'guard', ko: '카디안 가드맨', hp: 32, armor: 0.32, walk: 1.2, run: 4.2, charge: 5.4, weapon: 'lasgun', melee: M(28, 33, 11, 0.0, 0.85, 1.0), scale: 1, role: 'trooper' },
-  guard_plasma: { id: 'guard_plasma', faction: 'guard', ko: '플라즈마 거너', hp: 32, armor: 0.32, walk: 1.2, run: 4.2, charge: 5.4, weapon: 'plasma', melee: M(26, 28, 10, 0.0, 0.8, 1.0), scale: 1, role: 'special' },
-  guard_heavy: { id: 'guard_heavy', faction: 'guard', ko: '헤비 스터버 거너', hp: 32, armor: 0.32, walk: 1.1, run: 3.8, charge: 4.8, weapon: 'heavy_stubber', melee: M(24, 26, 10, 0.0, 0.8, 1.0), scale: 1, role: 'heavy' },
+  guardsman: { id: 'guardsman', faction: 'guard', ko: '카디안 가드맨', hp: 32, armor: 0.36, walk: 1.2, run: 4.2, charge: 5.4, weapon: 'lasgun', melee: M(28, 33, 11, 0.0, 0.85, 1.0), scale: 1, role: 'trooper' },
+  guard_plasma: { id: 'guard_plasma', faction: 'guard', ko: '플라즈마 거너', hp: 32, armor: 0.36, walk: 1.2, run: 4.2, charge: 5.4, weapon: 'plasma', melee: M(26, 28, 10, 0.0, 0.8, 1.0), scale: 1, role: 'special' },
+  guard_heavy: { id: 'guard_heavy', faction: 'guard', ko: '헤비 스터버 거너', hp: 32, armor: 0.36, walk: 1.1, run: 3.8, charge: 4.8, weapon: 'heavy_stubber', melee: M(24, 26, 10, 0.0, 0.8, 1.0), scale: 1, role: 'heavy' },
   guard_sergeant: { id: 'guard_sergeant', faction: 'guard', ko: '가드 서전트', hp: 40, armor: 0.34, walk: 1.2, run: 4.2, charge: 5.4, pistol: 'laspistol', melee: M(38, 34, 16, 0.2, 1.0, 1.1), scale: 1, role: 'leader', aura: 20 },
   guard_officer: { id: 'guard_officer', faction: 'guard', ko: '카디안 장교', hp: 55, armor: 0.36, walk: 1.2, run: 4.2, charge: 5.4, pistol: 'bolt_pistol', melee: M(48, 42, 30, 0.6, 1.0, 1.1), scale: 1.02, role: 'officer', aura: 45 },
-  krieg: { id: 'krieg', faction: 'krieg', ko: '크리그 근위병', hp: 34, armor: 0.34, walk: 1.15, run: 4.0, charge: 5.4, weapon: 'lasgun', melee: M(42, 44, 20, 0.1, 0.95, 1.15, 1.9), scale: 1, role: 'trooper' },
-  krieg_heavy: { id: 'krieg_heavy', faction: 'krieg', ko: '크리그 중화기병', hp: 34, armor: 0.34, walk: 1.05, run: 3.7, charge: 4.8, weapon: 'heavy_stubber', melee: M(28, 30, 10, 0.0, 0.8, 1.1), scale: 1, role: 'heavy' },
-  krieg_watchmaster: { id: 'krieg_watchmaster', faction: 'krieg', ko: '워치마스터', hp: 46, armor: 0.36, walk: 1.15, run: 4.0, charge: 5.4, pistol: 'laspistol', melee: M(46, 40, 20, 0.3, 1.0, 1.2), scale: 1, role: 'leader', aura: 25 },
-  ork_boy: { id: 'ork_boy', faction: 'orks', ko: '오크 보이', hp: 66, armor: 0.12, walk: 1.3, run: 5.0, charge: 6.8, pistol: 'slugga', melee: M(54, 30, 14, 0.1, 0.95, 1.8), scale: 1, role: 'trooper' },
+  krieg: { id: 'krieg', faction: 'krieg', ko: '크리그 근위병', hp: 34, armor: 0.42, walk: 1.15, run: 4.0, charge: 5.4, weapon: 'lasgun', melee: M(42, 44, 20, 0.1, 0.95, 1.15, 1.9), scale: 1, role: 'trooper' },
+  krieg_heavy: { id: 'krieg_heavy', faction: 'krieg', ko: '크리그 중화기병', hp: 34, armor: 0.42, walk: 1.05, run: 3.7, charge: 4.8, weapon: 'heavy_stubber', melee: M(28, 30, 10, 0.0, 0.8, 1.1), scale: 1, role: 'heavy' },
+  krieg_watchmaster: { id: 'krieg_watchmaster', faction: 'krieg', ko: '워치마스터', hp: 46, armor: 0.44, walk: 1.15, run: 4.0, charge: 5.4, pistol: 'laspistol', melee: M(46, 40, 20, 0.3, 1.0, 1.2), scale: 1, role: 'leader', aura: 25 },
+  ork_boy: { id: 'ork_boy', faction: 'orks', ko: '오크 보이', hp: 66, armor: 0.12, walk: 1.3, run: 5.0, charge: 6.8, pistol: 'slugga', melee: M(54, 30, 15, 0.3, 0.95, 1.8), scale: 1, role: 'trooper' },
   ork_shoota: { id: 'ork_shoota', faction: 'orks', ko: '슈타 보이', hp: 66, armor: 0.12, walk: 1.3, run: 5.0, charge: 6.6, weapon: 'shoota', melee: M(44, 28, 12, 0.1, 0.9, 1.8), scale: 1, role: 'trooper' },
-  ork_nob: { id: 'ork_nob', faction: 'orks', ko: '오크 놉', hp: 150, armor: 0.25, walk: 1.3, run: 4.9, charge: 6.6, melee: M(60, 42, 25, 0.3, 0.72, 2.8, 2.1), scale: 1.14, role: 'leader', aura: 22 },
+  ork_nob: { id: 'ork_nob', faction: 'orks', ko: '오크 놉', hp: 150, armor: 0.25, walk: 1.3, run: 4.9, charge: 6.6, melee: M(60, 42, 26, 0.55, 0.72, 2.8, 2.1), scale: 1.14, role: 'leader', aura: 22 },
   ork_warboss: { id: 'ork_warboss', faction: 'orks', ko: '오크 워보스', hp: 700, armor: 0.5, walk: 1.25, run: 4.7, charge: 6.4, pistol: 'kombi', melee: M(80, 62, 55, 0.6, 0.6, 6.0, 2.6), scale: 1.32, role: 'boss', aura: 55 },
 };
 

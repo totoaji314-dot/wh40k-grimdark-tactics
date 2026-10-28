@@ -28,6 +28,9 @@ export class BattleMap {
   trenches: [number, number][][] = [];
   fires: { x: number; z: number; y: number; s: number }[] = [];
   lamps: { x: number; y: number; z: number }[] = [];
+  /** exact oriented footprints of blocking pieces, bucketed for fast soldier collision */
+  solids: { x: number; z: number; c: number; s: number; hw: number; hd: number }[] = [];
+  private solidGrid = new Map<number, number[]>();
   rnd: () => number;
 
   constructor(public type: 'ruins' | 'trenches', public foot: Record<string, Footprint>, seed = 1234) {
@@ -50,6 +53,19 @@ export class BattleMap {
     const cx = Math.floor((x + HALF) / CELL), cz = Math.floor((z + HALF) / CELL);
     if (cx < 0 || cz < 0 || cx >= GN || cz >= GN) return -1;
     return cz * GN + cx;
+  }
+  /** True if a circle (soldier) at x,z of radius r overlaps a building / prop footprint. */
+  isSolid(x: number, z: number, r = 0.35) {
+    const k = Math.floor((x + HALF) / 8) * 100 + Math.floor((z + HALF) / 8);
+    const list = this.solidGrid.get(k);
+    if (!list) return false;
+    for (const i of list) {
+      const o = this.solids[i];
+      const dx = x - o.x, dz = z - o.z;
+      const lx = dx * o.c - dz * o.s, lz = dx * o.s + dz * o.c;
+      if (Math.abs(lx) < o.hw + r && Math.abs(lz) < o.hd + r) return true;
+    }
+    return false;
   }
   isBlocked(x: number, z: number) { const c = this.cellOf(x, z); return c < 0 || this.blocked[c] === 1 || Math.abs(x) > PLAY || Math.abs(z) > PLAY; }
   coverAt(x: number, z: number) { const c = this.cellOf(x, z); return c < 0 ? 0 : this.cover[c]; }
@@ -326,6 +342,13 @@ export class BattleMap {
       const f = this.foot[p.piece];
       if (!f) continue;
       const c = Math.cos(p.rot), s = Math.sin(p.rot);
+      if (f.block) {
+        const id = this.solids.push({ x: p.x, z: p.z, c, s, hw: f.w / 2, hd: f.d / 2 }) - 1;
+        const R2 = Math.hypot(f.w, f.d) / 2 + 1;
+        for (let gx = Math.floor((p.x - R2 + HALF) / 8); gx <= Math.floor((p.x + R2 + HALF) / 8); gx++) for (let gz = Math.floor((p.z - R2 + HALF) / 8); gz <= Math.floor((p.z + R2 + HALF) / 8); gz++) {
+          const k = gx * 100 + gz; const l = this.solidGrid.get(k); if (l) l.push(id); else this.solidGrid.set(k, [id]);
+        }
+      }
       const R = Math.hypot(f.w, f.d) / 2 + 3;
       for (let cz = Math.floor((p.z - R + HALF) / CELL); cz <= (p.z + R + HALF) / CELL; cz++) for (let cx = Math.floor((p.x - R + HALF) / CELL); cx <= (p.x + R + HALF) / CELL; cx++) {
         if (cx < 0 || cz < 0 || cx >= GN || cz >= GN) continue;
@@ -335,7 +358,7 @@ export class BattleMap {
         const ox = Math.abs(lx) - f.w / 2, oz = Math.abs(lz) - f.d / 2;
         const o = Math.max(ox, oz);
         const i = cz * GN + cx;
-        if (o < 0.3) {
+        if (o < 0.9) {
           if (f.block) this.blocked[i] = 1;
           if (f.h > 2.4 && f.block) this.losH[i] = Math.max(this.losH[i], p.y + f.h * 0.85);
         }

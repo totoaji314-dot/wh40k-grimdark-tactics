@@ -13,6 +13,34 @@ export async function loadEnvFootprints(base: string): Promise<Record<string, Fo
   return (await fetch(base + 'env.json')).json();
 }
 
+/** De-quantise every attribute to plain Float32 (meshopt / quantize stores int16 positions). Must run before transforming. */
+const UV_SCALE: Record<string, number> = { stone: 3.2, ferrocrete: 3.0, roof: 2.5, sandbag: 1.4, wood: 1.6, rubble: 2.5 };
+
+/** World-space box projection (1 UV = `scale` metres): seamless across neighbouring pieces. */
+function boxUV(g: THREE.BufferGeometry, scale: number) {
+  const p = g.attributes.position, n = g.attributes.normal;
+  const uv = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) {
+    const nx = Math.abs(n.getX(i)), ny = Math.abs(n.getY(i)), nz = Math.abs(n.getZ(i));
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    let u: number, v: number;
+    if (ny >= nx && ny >= nz) { u = x; v = z; } else if (nx >= nz) { u = z * Math.sign(n.getX(i) || 1); v = y; } else { u = -x * Math.sign(n.getZ(i) || 1); v = y; }
+    uv[i * 2] = u / scale; uv[i * 2 + 1] = v / scale;
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
+
+function toFloat(g: THREE.BufferGeometry) {
+  for (const k of Object.keys(g.attributes)) {
+    const a = g.attributes[k] as THREE.BufferAttribute;
+    if (a.array instanceof Float32Array && !a.normalized && !(a as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) continue;
+    const f = new Float32Array(a.count * a.itemSize);
+    for (let i = 0; i < a.count; i++) for (let j = 0; j < a.itemSize; j++) f[i * a.itemSize + j] = a.getComponent(i, j);
+    g.setAttribute(k, new THREE.BufferAttribute(f, a.itemSize));
+  }
+  return g;
+}
+
 export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
@@ -24,7 +52,7 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     const pieceName = (m.parent && m.parent !== gltf.scene ? m.parent.name : m.name).replace(/_\d+$/, '');
-    const g = m.geometry.clone();
+    const g = toFloat(m.geometry.clone());
     g.applyMatrix4(m.matrixWorld);
     const matName = ((m.material as THREE.Material).name || 'ferrocrete').replace(/\.\d+$/, '');
     if (!pieces.has(pieceName)) pieces.set(pieceName, []);
@@ -51,8 +79,9 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
         for (let i = 0; i < c.attributes.position.count; i++) { col[i * 4] = src[i * 3]; col[i * 4 + 1] = src[i * 3 + 1]; col[i * 4 + 2] = src[i * 3 + 2]; col[i * 4 + 3] = 1; }
         c.setAttribute('color', new THREE.BufferAttribute(col, 4));
       }
-      if (!c.attributes.uv) c.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(c.attributes.position.count * 2), 2));
-      const nonIndexed = c.index ? c.toNonIndexed() : c;
+      boxUV(c, UV_SCALE[mat] ?? 2.0);
+      if (!c.index) { const idx = new Uint32Array(c.attributes.position.count); for (let i = 0; i < idx.length; i++) idx[i] = i; c.setIndex(new THREE.BufferAttribute(idx, 1)); }
+      const nonIndexed = c;
       // normalise attribute types for merging
       for (const k of ['position', 'normal', 'uv', 'color']) {
         const a = nonIndexed.attributes[k] as THREE.BufferAttribute;
@@ -83,7 +112,7 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
         // roughness lives in the normal map alpha; vertex colour = baked AO (squeezed so it never goes fully black)
         sh.fragmentShader = sh.fragmentShader
           .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = texture2D(normalMap, vNormalMapUv).a;')
-          .replace('#include <color_fragment>', '#if defined( USE_COLOR_ALPHA )\n diffuseColor.rgb *= mix(0.32, 1.0, vColor.r);\n#elif defined( USE_COLOR )\n diffuseColor.rgb *= mix(0.32, 1.0, vColor.r);\n#endif');
+          .replace('#include <color_fragment>', '#if defined( USE_COLOR_ALPHA ) || defined( USE_COLOR )\n diffuseColor.rgb *= mix(0.5, 1.0, smoothstep(0.0, 0.65, vColor.r));\n#endif');
       };
       if (pbr.emissive) { m.emissive = new THREE.Color(pbr.emissive); m.emissiveIntensity = name === 'lamp' ? 4 : 1.2; m.emissiveMap = albedo; }
       m.name = name;

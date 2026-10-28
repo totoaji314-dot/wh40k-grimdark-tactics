@@ -72,7 +72,7 @@ export class UnitLibrary {
       const asset = this.bake(id, faction, v, gltf);
       const mat = new THREE.MeshStandardMaterial({
         map: albedo, roughnessMap: orm, metalnessMap: orm, aoMap: orm, aoMapIntensity: 0.6, normalMap: normal,
-        emissiveMap: emissive, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 1.6, roughness: 1, metalness: 1,
+        emissiveMap: emissive, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 1.6, roughness: 1, metalness: 0.6,
       });
       asset.material = skinMaterial(mat, asset.boneTex) as THREE.MeshStandardMaterial;
       asset.depthMaterial = skinMaterial(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), asset.boneTex, true) as THREE.MeshDepthMaterial;

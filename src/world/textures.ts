@@ -48,12 +48,16 @@ export function terrainLayer(name: typeof TERRAIN_LAYERS[number], size: number):
   switch (name) {
     case 'dirt': return make(size, (u, v) => {
       const n = fbm(u * P, v * P, 6, 11, P);
-      const w = worley(u * 24, v * 24, 5, 24);
-      const peb = sstep(0.32, 0.12, w[0]) * (w[2] > 0.55 ? 1 : 0);
-      const c = lerp3(lerp3(hex(0x5a4c3c), hex(0x7a6a52), n), hex(0x8c8478), peb * 0.8);
-      const k = 0.85 + 0.3 * fbm(u * 32, v * 32, 3, 3, 32);
-      return [c[0] * k, c[1] * k, c[2] * k, n * 0.6 + peb * 0.5, 0.92 - peb * 0.2];
-    }, 2.4);
+      const m = fbm(u * 3, v * 3, 4, 17, 3);
+      // sparse irregular gravel: distorted cells, only a few of them become stones
+      const wu = u + (fbm(u * 16, v * 16, 3, 5, 16) - 0.5) * 0.03, wv = v + (fbm(u * 16, v * 16, 3, 6, 16) - 0.5) * 0.03;
+      const w = worley(wu * 40, wv * 40, 5, 40);
+      const peb = sstep(0.28, 0.08, w[0]) * (w[2] > 0.82 ? 1 : 0) * (0.5 + n);
+      const base = lerp3(lerp3(hex(0x4a3e32), hex(0x6e604c), n), hex(0x5a554c), sstep(0.45, 0.75, m) * 0.6);
+      const c = lerp3(base, hex(0x7e786c), peb * 0.7);
+      const k = 0.82 + 0.3 * fbm(u * 48, v * 48, 3, 3, 48);
+      return [c[0] * k, c[1] * k, c[2] * k, n * 0.7 + peb * 0.4 + fbm(u * 48, v * 48, 3, 9, 48) * 0.3, 0.94 - peb * 0.15];
+    }, 2.2);
     case 'mud': return make(size, (u, v) => {
       const n = fbm(u * P, v * P, 6, 21, P);
       const ruts = Math.abs(Math.sin((v + fbm(u * 4, v * 4, 3, 2, 4) * 0.2) * Math.PI * 6));
@@ -111,7 +115,7 @@ export function envTexture(name: EnvMat, size: number): TexSet {
       const stain = sstep(0.4, 0.9, fbm(u * 2, v * 3, 4, 7, 2)) * (0.4 + v * 0.6);
       const pit = sstep(0.62, 0.7, fbm(u * 24, v * 24, 2, 9, 24));
       const c = lerp3(hex(0x7a7770), hex(0x9a968c), n);
-      const k = (0.7 + 0.3 * seam) * (1 - stain * 0.45) * (1 - pit * 0.25);
+      const k = (0.72 + 0.28 * seam) * (1 - stain * 0.3) * (1 - pit * 0.1);
       return [c[0] * k, c[1] * k, c[2] * k, n * 0.4 + seam * 0.5 - pit * 0.3, 0.88];
     }, 2.5);
     case 'stone': return make(size, (u, v) => {

@@ -19,7 +19,8 @@ export class Nav {
     const n = Math.ceil(L / (CELL * 0.45));
     for (let k = 1; k <= n; k++) {
       const t = k / n;
-      if (this.map.isBlocked(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t)) return false;
+      const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+      if (this.map.isBlocked(x, z) || this.map.isSolid(x, z, 0.3)) return false;
     }
     return true;
   }

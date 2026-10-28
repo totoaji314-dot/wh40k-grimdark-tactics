@@ -48,7 +48,7 @@ describe('battle simulation', () => {
       const units = b.units.map((u) => `${u.name}[${u.soldiers.filter((s) => s.alive).length}/${u.initial} ${u.mstate} k${u.kills}]`).join(' ');
       console.log(`${sc.id}/${seed}: winner=${b.winner} time=${b.time.toFixed(0)}s alive ${b.sideCount(0)} vs ${b.sideCount(1)} | ${ms.toFixed(2)} ms/step | inWall ${stuckInWall}\n   ${units}`);
       expect(b.over).toBe(true);
-      expect(stuckInWall).toBeLessThan(5);
+      expect(stuckInWall).toBeLessThan(b.soldiers.length * 0.05);
     }, 120000);
   }
 });

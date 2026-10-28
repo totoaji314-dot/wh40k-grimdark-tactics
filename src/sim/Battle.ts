@@ -603,10 +603,15 @@ export class Battle {
     const a = Math.min(1, dt * 7);
     s.vx += (vx - s.vx) * a; s.vz += (vz - s.vz) * a;
     let nx = s.x + s.vx * dt, nz = s.z + s.vz * dt;
-    if (this.map.isBlocked(nx, nz)) {
-      if (!this.map.isBlocked(nx, s.z)) nz = s.z;
-      else if (!this.map.isBlocked(s.x, nz)) nx = s.x;
-      else { nx = s.x; nz = s.z; s.vx *= 0.2; s.vz *= 0.2; }
+    const r = 0.3 * s.def.scale * (s.def.role === 'boss' ? 1.5 : 1);
+    const bad = (x: number, z: number) => this.map.isBlocked(x, z) || this.map.isSolid(x, z, r);
+    if (bad(nx, nz)) {
+      if (!bad(nx, s.z)) nz = s.z;
+      else if (!bad(s.x, nz)) nx = s.x;
+      else if (bad(s.x, s.z)) {
+        // already overlapping (pushed in by the crowd): step out along the shortest way
+        for (const [ox, oz] of [[0.25, 0], [-0.25, 0], [0, 0.25], [0, -0.25], [0.2, 0.2], [-0.2, 0.2], [0.2, -0.2], [-0.2, -0.2]]) if (!bad(s.x + ox, s.z + oz)) { nx = s.x + ox; nz = s.z + oz; break; }
+      } else { nx = s.x; nz = s.z; s.vx *= 0.2; s.vz *= 0.2; }
     }
     s.x = nx; s.z = nz;
     s.y = this.map.heightAt(s.x, s.z);
