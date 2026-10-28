@@ -1,0 +1,30 @@
+{
+  "name": "wh40k-total-war-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Unofficial fan-made Warhammer 40,000 real-time tactics battle for PC and mobile browsers (Three.js / WebGL2).",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "models": "node tools/build_models.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "@types/node": "^22.20.5",
+    "@types/three": "^0.186.0",
+    "meshoptimizer": "^0.22.0",
+    "sharp": "^0.35.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
