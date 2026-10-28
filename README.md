@@ -9,7 +9,7 @@ PC(마우스·키보드)와 휴대폰·태블릿(터치)에서 설치 없이 링
 
 **바로 플레이: https://totoaji314-dot.github.io/wh40k-grimdark-tactics/** (로그인·설치 없이 PC·휴대폰·태블릿에서 실행)
 
- 브랜치에 push하면 GitHub Actions가 테스트·빌드 후  브랜치를 갱신하므로 새 버전도 같은 주소에서 실행됩니다.
+`main` 브랜치에 push하면 GitHub Actions가 테스트·빌드 후 `gh-pages` 브랜치를 갱신하므로 새 버전도 같은 주소에서 실행됩니다.
 
 ![대규모 전투](docs/screenshots/battle_wide.jpg)
 
