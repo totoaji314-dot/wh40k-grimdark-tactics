@@ -7,7 +7,9 @@ PC(마우스·키보드)와 휴대폰·태블릿(터치)에서 설치 없이 링
 > 원작의 모델·텍스처·영상·사운드를 사용하지 않았습니다. 모든 3D 모델과 애니메이션은 이 저장소의
 > Blender 스크립트로 직접 생성했습니다.
 
-**플레이:** GitHub Pages 배포 후 이 자리에 주소가 들어갑니다.
+**바로 플레이: https://totoaji314-dot.github.io/wh40k-grimdark-tactics/** (로그인·설치 없이 PC·휴대폰·태블릿에서 실행)
+
+ 브랜치에 push하면 GitHub Actions가 테스트·빌드 후  브랜치를 갱신하므로 새 버전도 같은 주소에서 실행됩니다.
 
 ![대규모 전투](docs/screenshots/battle_wide.jpg)
 
