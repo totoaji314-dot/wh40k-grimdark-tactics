@@ -54,6 +54,8 @@ button.btn.big { padding: 14px 22px; font-size: 1.1em; }
 .card { width: 76px; min-width: 76px; height: 98px; position: relative; cursor: pointer; border: 1px solid #4a3f2c; background: linear-gradient(#2a2622, #141210); padding: 4px; display: flex; flex-direction: column; align-items: center; }
 .card.sel { border-color: #ffe08a; box-shadow: 0 0 10px #ffd06a88, inset 0 0 0 1px #ffd06a; }
 .card .ic { font-size: 26px; line-height: 34px; font-family: Georgia, serif; }
+.card .ic.portrait { width: 100%; height: 44px; background-size: cover; background-position: center 30%; border: 1px solid #000; position: relative; line-height: normal; }
+.card .ic.portrait span { position: absolute; left: 2px; bottom: 0; font-size: 12px; text-shadow: 0 0 3px #000, 0 0 2px #000; }
 .card .nm { font-size: 10.5px; text-align: center; line-height: 1.15; height: 25px; overflow: hidden; }
 .card .bars { width: 100%; margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
 .card .hb, .card .mb { height: 5px; background: #000; position: relative; }
@@ -85,12 +87,19 @@ button.btn.big { padding: 14px 22px; font-size: 1.1em; }
 @media (orientation: portrait) and (max-width: 700px) {
   .rotate-hint { display: block; position: absolute; top: 46px; left: 50%; transform: translateX(-50%); background: #000b; padding: 6px 10px; font-size: 12px; border: 1px solid var(--brass2); }
 }
-@media (max-height: 520px) {
+@media (pointer: coarse) { .orders .btn small { display: none; } }
+@media (max-height: 520px), (max-width: 760px) {
   :root { --ui-scale: 0.86; }
-  .card { width: 64px; min-width: 64px; height: 82px; }
-  .card .ic { font-size: 20px; line-height: 26px; }
-  .orders { bottom: 92px; }
-  .orders .btn { padding: 4px 7px; font-size: 12px; min-width: 44px; min-height: 36px; }
-  .minimap { width: 96px; height: 96px; }
-  .topbar { padding: 3px 8px; }
+  .card { width: 58px; min-width: 58px; height: 66px; padding: 2px; }
+  .card .ic { font-size: 17px; line-height: 20px; }
+  .card .nm { font-size: 9px; height: 20px; }
+  /* orders become a slim column on the right edge so the battlefield centre stays free for gestures */
+  .orders { left: auto; right: 4px; bottom: auto; top: 50px; transform: none; flex-direction: column; flex-wrap: wrap; max-height: calc(100vh - 140px); align-content: flex-end; padding: 3px; gap: 3px; }
+  .orders .btn { padding: 2px 6px; font-size: 11.5px; min-width: 58px; min-height: 30px; }
+  .minimap { width: 84px; height: 84px; }
+  .topbar { padding: 2px 8px; gap: 6px; }
+  .topbar .timer { font-size: 14px; min-width: 40px; }
+  .tr-buttons .btn { min-height: 34px; padding: 4px 8px; }
+  .hint { bottom: 76px; font-size: 11px; }
+  .toast { top: 44px; }
 }

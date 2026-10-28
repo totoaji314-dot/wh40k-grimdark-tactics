@@ -32,6 +32,8 @@ export interface Soldier {
   route: [number, number][]; routeI: number; routeTx: number; routeTz: number;
   coverX: number; coverZ: number; coverT: number; coverOk: boolean; coverSX: number; coverSZ: number;
   firingT: number;                  // recently fired (keeps aim pose)
+  bursts: number;                   // bursts fired since the last reload
+  turning: number;                  // how much the soldier is turning in place this tick
   anim: Anim;
   tint: number;
   crouch: boolean;
@@ -98,6 +100,10 @@ export type BattleEvent =
   | { type: 'order'; u: Unit; kind: string };
 
 const SPATIAL = 3; // spatial hash cell (m)
+/** Bursts per magazine before a reload animation. */
+const MAG_BURSTS: Record<string, number> = { bolter: 6, heavy_bolter: 4, plasma: 5, lasgun: 10, heavy_stubber: 4, shoota: 5, slugga: 6, bolt_pistol: 7, laspistol: 10, kombi: 5 };
+const reloadAt = new WeakMap<Soldier, number>();
+function setReload(s: Soldier, delay: number) { reloadAt.set(s, delay); }
 /** Global melee damage scale: Total War-style melee grinds on for tens of seconds instead of resolving instantly. */
 export const MELEE_SCALE = 0.5;
 
@@ -164,7 +170,7 @@ export class Battle {
         target: null, losT: this.rnd(), losOk: false, cool: this.rnd() * 2, burst: 0, gapT: 0, usingPistol: false,
         foe: null, meleeT: 0, strikeT: -1, strikeFoe: null, hitT: 0, chargeT: 0, stuckT: 0, pathClear: true, pathT: this.rnd(),
         firingT: 0, anim: newAnim('idle', this.rnd() * 2), tint: 0.9 + this.rnd() * 0.2, crouch: false,
-        route: [], routeI: 0, routeTx: 0, routeTz: 0, coverX: 0, coverZ: 0, coverT: 0, coverOk: false, coverSX: 1e9, coverSZ: 1e9,
+        route: [], routeI: 0, routeTx: 0, routeTz: 0, bursts: 0, turning: 0, coverX: 0, coverZ: 0, coverT: 0, coverOk: false, coverSX: 1e9, coverSZ: 1e9,
       };
       if (!u.leader && (d.role === 'leader' || d.role === 'officer' || d.role === 'boss')) u.leader = s;
       const w = d.weapon ? WEAPONS[d.weapon] : d.pistol ? WEAPONS[d.pistol] : null;
@@ -187,6 +193,8 @@ export class Battle {
   // ------------------------------------------------------------------ orders (player + AI)
   order(u: Unit, o: Order) {
     if (u.mstate === 'routing' || u.mstate === 'gone' || u.mstate === 'shattered') return;
+    const L = u.leader;
+    if (L && L.alive && !L.foe && o.type !== 'idle' && (u.order.type !== o.type || u.order.target !== o.target)) play(L.anim, 'command', 1.15, 0.15, true);
     u.order = o;
     u.charging = false;
     if (o.type === 'move') {
@@ -458,6 +466,11 @@ export class Battle {
     s.firingT = Math.max(0, s.firingT - dt);
     s.cool -= dt;
     s.losT -= dt;
+    const rl = reloadAt.get(s);
+    if (rl !== undefined) {
+      const left = rl - dt;
+      if (left <= 0) { reloadAt.delete(s); if (!s.foe && s.hitT <= 0) play(s.anim, 'reload', 1, 0.12, true); } else reloadAt.set(s, left);
+    }
     s.pathT -= dt;
 
     // ---------- melee
@@ -551,9 +564,11 @@ export class Battle {
 
     // ---------- facing
     const spd = Math.hypot(s.vx, s.vz);
+    const yaw0 = s.yaw;
     if (s.target && (fired || s.firingT > 0 || spd < 1.6)) s.yaw = turn(s.yaw, Math.atan2(s.target.x - s.x, s.target.z - s.z), dt * 6);
     else if (spd > 0.4) s.yaw = turn(s.yaw, Math.atan2(s.vx, s.vz), dt * 6);
     else s.yaw = turn(s.yaw, u.yaw, dt * 3);
+    s.turning = s.turning * 0.8 + Math.abs(angDiff(yaw0, s.yaw)) / Math.max(dt, 1e-3) * 0.2;
     s.state = spd > 0.35 ? 'move' : 'idle';
     this.pickAnim(s, spd, mode);
   }
@@ -658,6 +673,14 @@ export class Battle {
     if (u.abilityT > 0 && u.tpl.ability === 'volley' && !u.moving) rof = 2.0;
     s.cool = w.cycle * (0.85 + this.rnd() * 0.3) / rof;
     s.burst = w.burst - 1; s.gapT = w.gap;
+    s.bursts++;
+    if (s.bursts >= (MAG_BURSTS[w.id] ?? 6)) {
+      // reload once this burst is out: play the clip and hold fire for its length
+      s.bursts = 0;
+      const rc = this.clip(s, 'reload');
+      s.cool = Math.max(s.cool, rc.dur + w.burst * w.gap);
+      setReload(s, w.burst * w.gap + 0.15);
+    }
     this.fireShot(s, o, w, w === pistol && w !== main, moving);
     return true;
   }
@@ -796,6 +819,7 @@ export class Battle {
       play(a, clip, rate, 0.22);
       return;
     }
+    if (s.turning > 1.4 && !u.target) { play(a, 'turn', 1.2, 0.18); return; }
     const supp = u.suppression > 0.45 || u.formation === 'defensive' || (this.map.inTrench(s.x, s.z) && u.target);
     if (supp && s.def.role !== 'boss') { s.crouch = true; play(a, 'cover', 1, 0.3); return; }
     if (u.target || s.firingT > 0 || u.inMelee) { play(a, 'aim', 1, 0.25); return; }

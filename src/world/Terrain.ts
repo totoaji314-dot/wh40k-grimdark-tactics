@@ -92,6 +92,9 @@ vec3 alb = (c0.rgb * w0 + c1.rgb * w.x + c2.rgb * w.y + c3.rgb * w.z + c4.rgb * 
 vec4 nb = (n0 * w0 + n1 * w.x + n2 * w.y + n3 * w.z + n4 * w.w) / sum;
 float macro = vn(vWPos.xz * 0.012) * 0.5 + vn(vWPos.xz * 0.05) * 0.5;
 alb *= mix(0.78, 1.12, macro);
+// grey ash / dust patches break up the brown earth
+float ashP = smoothstep(0.45, 0.8, vn(vWPos.xz * 0.021 + 7.3));
+alb = mix(alb, vec3(dot(alb, vec3(0.33))) * vec3(0.92, 0.95, 1.0), ashP * 0.55);
 diffuseColor.rgb *= alb;
 gRough = nb.a;
 vec3 tn = normalize(nb.xyz * 2.0 - 1.0);

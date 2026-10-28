@@ -63,14 +63,40 @@ async function main() {
       console.log('SHOT', st.shot);
     }
     if (st.tap) await touchTap(st.tap[0], st.tap[1]);
+    if (st.tapJs) { const p = await evaluate(st.tapJs); console.log('TAP', JSON.stringify(p)); if (p) await touchTap(p[0], p[1], st.hold); }
+    if (st.throttle) await send('Emulation.setCPUThrottlingRate', { rate: st.throttle });
+    if (st.mouseJs) { const m = await evaluate(st.mouseJs); console.log('MOUSE', JSON.stringify(m)); if (m) await mouse(m); }
+    if (st.key) await key(st.key);
     if (st.drag) await touchDrag(st.drag);
   }
   console.log('LOGS', JSON.stringify(logs.slice(0, 20), null, 1));
 }
 
-async function touchTap(x, y) {
+async function mouse(m) {
+  // m: { button: 'left'|'right'|'middle', from: [x,y], to?: [x,y], wheel?: dy, double?: bool }
+  const [x0, y0] = m.from;
+  if (m.wheel) { await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: x0, y: y0, deltaX: 0, deltaY: m.wheel }); return; }
+  const b = m.button ?? 'left';
+  const mods = m.shift ? 8 : 0;
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 });
+  for (let rep = 0; rep < (m.double ? 2 : 1); rep++) {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: b, clickCount: rep + 1, modifiers: mods });
+    if (m.to) for (let k = 1; k <= 8; k++) { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0 + (m.to[0] - x0) * k / 8, y: y0 + (m.to[1] - y0) * k / 8, button: b, modifiers: mods }); await sleep(16); }
+    const [x1, y1] = m.to ?? m.from;
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x1, y: y1, button: b, clickCount: rep + 1, modifiers: mods });
+    await sleep(60);
+  }
+}
+async function key(code) {
+  const map = { Space: [' ', 32], Escape: ['Escape', 27], KeyH: ['h', 72], KeyR: ['r', 82], KeyC: ['c', 67], KeyF: ['f', 70], KeyG: ['g', 71], Digit2: ['2', 50], Digit1: ['1', 49], KeyW: ['w', 87], KeyQ: ['q', 81] };
+  const [k, kc] = map[code] ?? [code, 0];
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', code, key: k, windowsVirtualKeyCode: kc });
+  await sleep(40);
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key: k, windowsVirtualKeyCode: kc });
+}
+async function touchTap(x, y, hold = 60) {
   await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
-  await sleep(60);
+  await sleep(hold);
   await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 async function touchDrag(d) {

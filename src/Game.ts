@@ -161,7 +161,11 @@ export class Game {
       selectAll: () => this.selectAll(),
       pause: () => this.togglePause(), speed: () => this.cycleSpeed(), menu: () => this.openMenu(),
     });
-    this.hud.onBanner = (u, e) => this.clickUnit(u, e.shiftKey || e.ctrlKey || this.hud.multi);
+    this.hud.onBanner = (u, e) => {
+      if (e.button === 2) { if (u.side !== this.playerSide && this.selected.size) this.attack(u, false); return; }
+      this.clickUnit(u, e.shiftKey || e.ctrlKey || this.hud.multi);
+    };
+    try { this.hud.setPortraits(this.renderPortraits()); } catch (e) { console.warn('portraits', e); }
     this.hud.fpsEl.style.display = this.settings.showFps ? '' : 'none';
     this.buildMinimapBg();
     this.bindInput();
@@ -548,9 +552,12 @@ export class Game {
     // ---------- mouse
     let lDown: { x: number; y: number } | null = null, rDown: { x: number; y: number; g: THREE.Vector3 | null } | null = null, mDown: { x: number; y: number } | null = null;
     let lastRight = 0;
+    // browsers fire emulated mouse events after a tap; they must not act as desktop clicks
+    const fromTouch = (e: MouseEvent) => performance.now() - this.lastTouch < 900 || (e as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents === true;
     on(cv, 'contextmenu', (e: MouseEvent) => e.preventDefault());
     on(cv, 'mousedown', (e: MouseEvent) => {
       this.audio.unlock();
+      if (fromTouch(e)) return;
       if (e.button === 0) lDown = { x: e.clientX, y: e.clientY };
       if (e.button === 2) rDown = { x: e.clientX, y: e.clientY, g: this.groundAt(e.clientX, e.clientY) };
       if (e.button === 1) { mDown = { x: e.clientX, y: e.clientY }; e.preventDefault(); }
@@ -570,6 +577,7 @@ export class Game {
       this.edge = this.settings.edgePan ? [e.clientX < 8 ? -1 : e.clientX > innerWidth - 8 ? 1 : 0, e.clientY < 8 ? 1 : e.clientY > innerHeight - 8 ? -1 : 0] : [0, 0];
     });
     on(window, 'mouseup', (e: MouseEvent) => {
+      if (fromTouch(e)) { lDown = null; rDown = null; return; }
       if (e.button === 0 && lDown) {
         const box = this.hud.selBox.style.display !== 'none';
         if (box) this.boxSelect(lDown.x, lDown.y, e.clientX, e.clientY, e.shiftKey || e.ctrlKey);
@@ -624,6 +632,7 @@ export class Game {
     on(cv, 'pointerdown', (e: PointerEvent) => {
       if (e.pointerType !== 'touch') return;
       this.audio.unlock();
+      this.lastTouch = performance.now();
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
       if (pts.size === 1) {
         gesture = 'none';
@@ -662,6 +671,7 @@ export class Game {
     });
     const endTouch = (e: PointerEvent) => {
       if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return;
+      this.lastTouch = performance.now();
       const p = pts.get(e.pointerId)!;
       pts.delete(e.pointerId);
       if (longT) clearTimeout(longT);
@@ -672,6 +682,7 @@ export class Game {
     on(window, 'resize', () => this.resize());
   }
   private edge: [number, number] = [0, 0];
+  private lastTouch = -1e9;
 
   private tap(x: number, y: number) {
     const u = this.pickUnit(x, y, 34);
@@ -719,6 +730,64 @@ export class Game {
     this.renderer.setSize(innerWidth, innerHeight);
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     if (this.composer) { this.composer.setPixelRatio(dpr); this.composer.setSize(innerWidth, innerHeight); }
+  }
+
+  /** Render a close-up portrait of each unit type's main soldier model for the unit cards. */
+  private renderPortraits(): Map<string, string> {
+    const out = new Map<string, string>();
+    const S = 96;
+    const rt = new THREE.WebGLRenderTarget(S, S, { samples: 4 });
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x231e1a);
+    scene.add(new THREE.HemisphereLight(0xd8d0c0, 0x40342a, 1.6));
+    const key = new THREE.DirectionalLight(0xffe0b8, 3.2); key.position.set(-2, 3, 4); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9ab0ff, 2.0); rim.position.set(3, 2, -3); scene.add(rim);
+    scene.environment = this.scene.environment;
+    const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+    const px = new Uint8Array(S * S * 4);
+    const cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const g = cv.getContext('2d')!;
+    const prevTone = this.renderer.toneMapping;
+    const done = new Set<string>();
+    for (const u of this.battle.units) {
+      if (u.side !== this.playerSide || done.has(u.tpl.id)) continue;
+      done.add(u.tpl.id);
+      const trooper = u.soldiers.find((s) => s.def.role === 'trooper' || s.def.role === 'heavy') ?? u.soldiers[0];
+      const lead = u.leader ?? trooper;
+      const pick = u.tpl.id === 'command' || u.tpl.id === 'nobz' ? lead : trooper;
+      const id = pick.def.id;
+      const asset = this.lib.variants.get(id);
+      if (!asset) continue;
+      const ur = new UnitRenderer(this.lib, { [id]: 1 }, false);
+      ur.lodDist = [1000, 2000];
+      scene.add(ur.group);
+      const h = asset.height * pick.def.scale;
+      const fig: Figure = { variant: id, x: 0, y: 0, z: 0, yaw: 0.45, scale: pick.def.scale, tint: 1, anim: { clip: 'aim', t: 0.4, rate: 1, prev: null, pt: 0, prate: 1, blend: 0, fade: 0 }, visible: true };
+      cam.position.set(0.55, h * 0.78, 2.1 + h * 0.15);
+      cam.lookAt(0, h * 0.72, 0);
+      cam.updateMatrixWorld();
+      ur.update(cam, [fig]);
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.setRenderTarget(rt);
+      this.renderer.render(scene, cam);
+      this.renderer.readRenderTargetPixels(rt, 0, 0, S, S, px);
+      this.renderer.setRenderTarget(null);
+      const img = g.createImageData(S, S);
+      // render targets hold linear colour: apply a filmic curve + sRGB encode while flipping rows
+      const lut = new Uint8ClampedArray(256);
+      for (let i = 0; i < 256; i++) { const x = (i / 255) * 1.25; const t = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); lut[i] = 255 * Math.pow(Math.min(1, Math.max(0, t)), 1 / 2.2); }
+      for (let y = 0; y < S; y++) {
+        const src = (S - 1 - y) * S * 4, dst = y * S * 4;
+        for (let x = 0; x < S * 4; x += 4) { img.data[dst + x] = lut[px[src + x]]; img.data[dst + x + 1] = lut[px[src + x + 1]]; img.data[dst + x + 2] = lut[px[src + x + 2]]; img.data[dst + x + 3] = 255; }
+      }
+      g.putImageData(img, 0, 0);
+      out.set(u.tpl.id, cv.toDataURL('image/png'));
+      scene.remove(ur.group);
+      ur.group.children.forEach((m) => (m as THREE.Mesh).geometry.dispose());
+    }
+    this.renderer.toneMapping = prevTone;
+    rt.dispose();
+    return out;
   }
 
   // ====================================================================== minimap

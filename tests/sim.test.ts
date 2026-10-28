@@ -33,12 +33,14 @@ describe('battle simulation', () => {
       const ai = [new Commander(b, 0), new Commander(b, 1)];
       const dt = 1 / 20;
       let steps = 0, stuckInWall = 0;
+      const used = new Set<string>();
       const t0 = performance.now();
       while (!b.over && b.time < 900) {
         ai[0].update(dt); ai[1].update(dt);
         b.update(dt);
         b.events.length = 0;
         steps++;
+        if (steps % 3 === 0) for (const s of b.soldiers) used.add(s.anim.clip);
         if (steps % 200 === 0) for (const s of b.soldiers) {
           expect(Number.isFinite(s.x) && Number.isFinite(s.z)).toBe(true);
           if (s.alive && map.isBlocked(s.x, s.z)) stuckInWall++;
@@ -47,7 +49,12 @@ describe('battle simulation', () => {
       const ms = (performance.now() - t0) / steps;
       const units = b.units.map((u) => `${u.name}[${u.soldiers.filter((s) => s.alive).length}/${u.initial} ${u.mstate} k${u.kills}]`).join(' ');
       console.log(`${sc.id}/${seed}: winner=${b.winner} time=${b.time.toFixed(0)}s alive ${b.sideCount(0)} vs ${b.sideCount(1)} | ${ms.toFixed(2)} ms/step | inWall ${stuckInWall}\n   ${units}`);
+      console.log('   clips used:', [...used].sort().join(' '));
       expect(b.over).toBe(true);
+      // the battle actually drives the full animation set (12 required kinds)
+      for (const c of ['idle', 'aim', 'walk', 'run', 'charge', 'fire', 'reload', 'hit', 'cover', 'command']) expect(used.has(c), c).toBe(true);
+      expect(used.has('melee_a') || used.has('melee_b')).toBe(true);
+      expect(used.has('death_a') || used.has('death_b')).toBe(true);
       expect(stuckInWall).toBeLessThan(b.soldiers.length * 0.05);
     }, 120000);
   }

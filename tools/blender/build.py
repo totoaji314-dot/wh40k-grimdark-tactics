@@ -110,8 +110,8 @@ for B in built:
     for other in built:
         hide = other is not B
         other['ob'].hide_render = hide
-    l1 = lod(ob, 0.32, v['id'] + '_lod1')
-    l2 = lod(ob, 0.10, v['id'] + '_lod2')
+    l1 = lod(ob, 0.22, v['id'] + '_lod1')
+    l2 = lod(ob, 0.06, v['id'] + '_lod2')
     clips = anims.build_clips(body, st, v['cls'], 'x')
     cm = {}
     for (name, frames, fn, loop, m) in clips:

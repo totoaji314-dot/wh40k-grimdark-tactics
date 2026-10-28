@@ -96,12 +96,26 @@ export class Hud {
     d.innerHTML = `<div class="flag" style="background:${col}">${u.tpl.icon}</div><div class="hp"><div style="background:${mine ? '#8fd05a' : '#ff6a50'}"></div></div><div class="stt"></div>`;
     d.addEventListener('pointerup', (e) => { e.stopPropagation(); (this as { onBanner?: (u: Unit, e: PointerEvent) => void }).onBanner?.(u, e); });
     d.addEventListener('pointerdown', (e) => e.stopPropagation());
+    d.addEventListener('contextmenu', (e) => e.preventDefault());
     this.bannerBox.appendChild(d);
     this.banners.set(u.id, d);
   }
 
   multi = false;
   onBanner?: (u: Unit, e: PointerEvent) => void;
+
+  /** Replace the glyph icons with rendered model portraits (template id -> image URL). */
+  setPortraits(p: Map<string, string>) {
+    for (const [id, c] of this.cards) {
+      const u = this.b.units.find((x) => x.id === id)!;
+      const url = p.get(u.tpl.id);
+      if (!url) continue;
+      const ic = c.querySelector('.ic') as HTMLDivElement;
+      ic.classList.add('portrait');
+      ic.style.backgroundImage = `url(${url})`;
+      ic.innerHTML = `<span>${u.tpl.icon}</span>`;
+    }
+  }
 
   toast(text: string, dur = 2.5) { this.toastEl.textContent = text; this.toastEl.style.opacity = '1'; this.toastT = dur; }
   hint(text: string) { this.hintEl.textContent = text; }
@@ -142,6 +156,7 @@ export class Hud {
     }
     const sel = [...selected];
     this.orders.style.display = sel.length ? 'flex' : 'none';
+    if (sel.length) this.hintEl.style.display = 'none';
     if (sel.length) {
       const u0 = sel[0];
       this.obtn.run.classList.toggle('on', sel.every((u) => u.run));
