@@ -103,6 +103,24 @@ export class Hud {
 
   multi = false;
   onBanner?: (u: Unit, e: PointerEvent) => void;
+  private deployEl: HTMLDivElement | null = null;
+
+  /** Pre-battle deployment banner with the start button. */
+  showDeploy(onStart: () => void) {
+    const touch = matchMedia('(pointer:coarse)').matches;
+    const d = el('div', 'deploy panel pe');
+    d.innerHTML = `<div class="dt">배치 단계</div><div class="dd">${touch
+      ? '부대 카드/깃발을 눌러 선택 → 파란 구역 안을 눌러 배치 · 두 손가락으로 카메라'
+      : '부대 선택 → 파란 구역 안에서 우클릭으로 배치 · <b>우클릭 드래그</b>로 전열의 방향과 폭 지정 · Ctrl+숫자 부대 그룹'}</div>`;
+    const go = btn('전투 시작 ▶<small>Enter</small>', onStart, '배치를 마치고 전투 시작 (Enter)');
+    go.id = 'deploy-go'; go.classList.add('go');
+    d.appendChild(go);
+    this.root.appendChild(d);
+    this.deployEl = d;
+    this.root.classList.add('deploying');
+  }
+
+  hideDeploy() { this.deployEl?.remove(); this.deployEl = null; this.root.classList.remove('deploying'); }
 
   /** Replace the glyph icons with rendered model portraits (template id -> image URL). */
   setPortraits(p: Map<string, string>) {

@@ -26,7 +26,9 @@ const STEP = 1 / 30;
 const SUN_DIR = new THREE.Vector3(-0.86, 0.33, -0.3).normalize();
 const BASE = import.meta.env.BASE_URL;
 
-export interface BattleOptions { scenario: Scenario; difficulty: number; scale: number; quality: QualityLevel; seed?: number }
+export interface BattleOptions { scenario: Scenario; difficulty: number; scale: number; quality: QualityLevel; seed?: number   /** false skips the pre-battle deployment phase (automated tests) */
+  deploy?: boolean;
+}
 
 const GRADE = {
   uniforms: { tDiffuse: { value: null }, uVig: { value: 0.32 }, uTime: { value: 0 } },
@@ -62,6 +64,12 @@ export class Game {
   playerSide = 0;
   speed = 1;
   paused = false;
+  /** pre-battle deployment: the simulation and AI wait while the player positions units */
+  deploying = false;
+  deployZone = { x0: 0, x1: 0, z0: 0, z1: 0 };
+  private zoneMesh: THREE.Group | null = null;
+  private groups = new Map<number, Unit[]>();
+  private groupTap = { n: -1, t: 0 };
   private acc = 0;
   private composer: EffectComposer | null = null;
   private grade: ShaderPass | null = null;
@@ -186,6 +194,7 @@ export class Game {
       this.clickUnit(u, e.shiftKey || e.ctrlKey || this.hud.multi);
     };
     try { this.hud.setPortraits(this.renderPortraits()); } catch (e) { console.warn('portraits', e); }
+    if (this.opts.deploy !== false) this.beginDeployment();
     this.hud.fpsEl.style.display = this.settings.showFps ? '' : 'none';
     this.buildMinimapBg();
     this.bindInput();
@@ -294,7 +303,7 @@ export class Game {
   /** One rendered frame: advance the fixed-step simulation, then animation, effects and rendering. */
   frame(dt: number) {
     const b = this.battle;
-    if (!this.paused) {
+    if (!this.paused && !this.deploying) {
       this.acc += dt * this.speed;
       let n = 0;
       while (this.acc >= STEP && n < 6) {
@@ -499,6 +508,7 @@ export class Game {
   }
 
   attack(target: Unit, run: boolean) {
+    if (this.deploying) { this.hud.toast('배치 단계에서는 이동·배치만 할 수 있습니다 — 준비되면 전투 시작', 2); return; }
     for (const u of this.selected) this.battle.order(u, { type: 'attack', target, run: run || u.meleeOnly, charge: u.meleeOnly });
     this.audio.play('click');
     this.markTarget = { u: target, t: 1.2 };
@@ -506,6 +516,7 @@ export class Game {
   private markTarget: { u: Unit; t: number } | null = null;
 
   private chargeNearest() {
+    if (this.deploying) return;
     for (const u of this.selected) {
       const n = this.battle.nearestEnemyUnit(u);
       if (n) this.battle.order(u, { type: 'attack', target: u.target ?? n[1], run: true, charge: true });
@@ -531,32 +542,39 @@ export class Game {
       yaw = Math.hypot(ax - cx, az - cz) > 4 ? Math.atan2(ax - cx, az - cz) : units[0].yaw;
       len = 0; mx = ax; mz = az;
     }
-    const widths = units.map((u) => {
-      const n = u.soldiers.filter((s) => s.alive).length;
-      const ranks = u.formation === 'column' ? Math.ceil(n / 5) : n <= 12 ? 2 : n <= 30 ? 3 : 4;
-      return Math.ceil(n / ranks) * u.spacing * (u.formation === 'loose' ? 1.9 : 1) + 4;
-    });
-    const total = Math.max(len, widths.reduce((a, b) => a + b, 0));
+    const GAP = 4;
+    const widths = units.map((u) => (u.files > 0 && u.formation !== 'column' ? u.files : this.battle.autoFiles(u)) * this.battle.fileSpacing(u) + GAP);
+    const sumW = widths.reduce((a, b) => a + b, 0);
+    // a drag shorter than the units' minimum frontage is stretched to fit; a longer one widens their ranks
+    const total = Math.max(len, units.reduce((a, u) => a + Math.min(4, this.battle.autoFiles(u)) * this.battle.fileSpacing(u) + GAP, 0));
     // order units left -> right by their current position along the new front
     const rx = -Math.cos(yaw), rz = Math.sin(yaw);
     const order = units.map((u, i) => ({ u, i, k: (u.x - mx) * rx + (u.z - mz) * rz })).sort((a, b) => a.k - b.k);
     let off = -total / 2;
     const m = new THREE.Matrix4();
     let pn = 0;
+    const alongTotal = len > 0 ? total : sumW;
     for (const { u, i } of order) {
-      const w = widths[i] * (len > 0 ? total / widths.reduce((a, b) => a + b, 0) : 1);
-      const px = mx + rx * (off + w / 2), pz = mz + rz * (off + w / 2);
+      const w = len > 0 ? widths[i] * (total / sumW) : widths[i];
+      let px = mx + rx * (off + w / 2), pz = mz + rz * (off + w / 2);
       off += w;
+      const n = Math.max(1, u.soldiers.filter((s) => s.alive && s !== u.leader).length);
+      const files = len > 0 && u.formation !== 'column' ? THREE.MathUtils.clamp(Math.round((w - GAP) / this.battle.fileSpacing(u)), Math.min(2, n), n) : undefined;
+      if (this.deploying) [px, pz] = this.clampToZone(px, pz);
       if (previewOnly) {
-        const save = { x: u.x, z: u.z, yaw: u.yaw };
-        u.x = px; u.z = pz; u.yaw = yaw;
+        const save = { x: u.x, z: u.z, yaw: u.yaw, files: u.files };
+        u.x = px; u.z = pz; u.yaw = yaw; if (files !== undefined) u.files = files;
+        this.battle.layout(u, false);
         for (const s of u.soldiers) if (s.alive && pn < 1200) {
           const [wx, wz] = this.battle.slotWorld(u, s);
           m.makeTranslation(wx, this.map.heightAt(wx, wz) + 0.07, wz); this.preview.setMatrixAt(pn++, m);
         }
-        u.x = save.x; u.z = save.z; u.yaw = save.yaw;
-      } else this.battle.order(u, { type: 'move', x: px, z: pz, yaw, run });
+        u.x = save.x; u.z = save.z; u.yaw = save.yaw; u.files = save.files;
+        this.battle.layout(u, false);
+      } else if (this.deploying) this.battle.place(u, px, pz, yaw, files);
+      else this.battle.order(u, { type: 'move', x: px, z: pz, yaw, run, files });
     }
+    void alongTotal;
     if (previewOnly) { this.preview.count = pn; this.preview.instanceMatrix.needsUpdate = true; }
     else { this.preview.count = 0; this.audio.play('click'); }
   }
@@ -668,7 +686,11 @@ export class Game {
       else if (k === 'KeyF') { const on2 = ![...this.selected].every((u) => u.fireAtWill); this.forSel((u) => { u.fireAtWill = on2; }); }
       else if (k === 'KeyG') this.forSel((u) => { if (this.battle.useAbility(u)) this.abilityFx(u); });
       else if (k === 'KeyA' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.selectAll(); }
-      else if (/^Digit[1-4]$/.test(k) && !e.ctrlKey) this.forSel((u) => this.battle.setFormation(u, (['line', 'column', 'loose', 'defensive'] as FormationId[])[Number(k[5]) - 1]));
+      else if ((k === 'Enter' || k === 'NumpadEnter') && this.deploying) this.startBattle();
+      else if (/^Digit[1-9]$/.test(k) && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.assignGroup(Number(k[5])); }
+      else if (/^Digit[1-4]$/.test(k) && e.altKey) { e.preventDefault(); this.forSel((u) => this.battle.setFormation(u, (['line', 'column', 'loose', 'defensive'] as FormationId[])[Number(k[5]) - 1])); }
+      else if (/^Digit[1-9]$/.test(k) && this.groups.get(Number(k[5]))?.length) this.selectGroup(Number(k[5]));
+      else if (/^Digit[1-4]$/.test(k)) this.forSel((u) => this.battle.setFormation(u, (['line', 'column', 'loose', 'defensive'] as FormationId[])[Number(k[5]) - 1]));
       else if (k === 'Equal' || k === 'NumpadAdd') this.speed = Math.min(4, this.speed + 1);
       else if (k === 'Minus' || k === 'NumpadSubtract') this.speed = Math.max(1, this.speed - 1);
       else if (k === 'Tab') { e.preventDefault(); this.cycleSelection(); }
@@ -767,6 +789,75 @@ export class Game {
     const next = mine[(mine.indexOf(cur as Unit) + 1) % mine.length];
     this.select(next, false);
     this.rig.focus(next.x, next.z);
+  }
+
+  // ====================================================================== deployment and control groups
+  beginDeployment() {
+    const mine = this.battle.units.filter((u) => u.side === this.playerSide);
+    const zs = mine.flatMap((u) => u.soldiers.map((s) => s.z));
+    const zMin = Math.min(...zs), zMax = Math.max(...zs);
+    const toward = zMin + zMax > 0 ? 1 : -1; // + when the player starts on the +z half
+    const lim = PLAY - 6;
+    let z0 = Math.max(-lim, zMin - 28), z1 = Math.min(lim, zMax + 28);
+    if (toward > 0) z0 = Math.max(z0, 12); else z1 = Math.min(z1, -12);
+    this.deployZone = { x0: -lim, x1: lim, z0, z1 };
+    this.deploying = true;
+    this.zoneMesh = this.makeZoneMesh();
+    this.scene.add(this.zoneMesh);
+    this.hud.hint('');
+    this.hud.showDeploy(() => this.startBattle());
+  }
+
+  clampToZone(x: number, z: number): [number, number] {
+    const d = this.deployZone;
+    return [THREE.MathUtils.clamp(x, d.x0 + 4, d.x1 - 4), THREE.MathUtils.clamp(z, d.z0 + 4, d.z1 - 4)];
+  }
+
+  startBattle() {
+    if (!this.deploying) return;
+    this.deploying = false;
+    if (this.zoneMesh) { this.scene.remove(this.zoneMesh); this.zoneMesh.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); }); this.zoneMesh = null; }
+    this.hud.hideDeploy();
+    this.hud.toast('전투 개시!', 1.8);
+    this.audio.play('horn', this.rig.focusPoint.x, this.rig.focusPoint.z, 0.8);
+  }
+
+  /** Translucent terrain-hugging rectangle with a bright border showing where the player may deploy. */
+  private makeZoneMesh() {
+    const d = this.deployZone, g = new THREE.Group();
+    const nx = 48, nz = Math.max(6, Math.round((d.z1 - d.z0) / 8));
+    const geo = new THREE.PlaneGeometry(d.x1 - d.x0, d.z1 - d.z0, nx, nz); geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i) + (d.x0 + d.x1) / 2, z = p.getZ(i) + (d.z0 + d.z1) / 2; p.setXYZ(i, x, this.map.heightAt(x, z) + 0.25, z); }
+    g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x4f7fd0, transparent: true, opacity: 0.045, depthWrite: false, fog: false })));
+    const pts: THREE.Vector3[] = [];
+    const edge = (ax: number, az: number, bx: number, bz: number) => { const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 4); for (let i = 0; i < n; i++) { const t = i / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t; pts.push(new THREE.Vector3(x, this.map.heightAt(x, z) + 0.4, z)); } };
+    edge(d.x0, d.z0, d.x1, d.z0); edge(d.x1, d.z0, d.x1, d.z1); edge(d.x1, d.z1, d.x0, d.z1); edge(d.x0, d.z1, d.x0, d.z0);
+    g.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x7fb4ff, transparent: true, opacity: 0.85, fog: false })));
+    g.renderOrder = 2; g.name = 'deployZone';
+    return g;
+  }
+
+  private assignGroup(n: number) {
+    const list = [...this.selected].filter((u) => u.side === this.playerSide);
+    if (!list.length) { this.groups.delete(n); return; }
+    this.groups.set(n, list);
+    this.hud.toast(`부대 그룹 ${n} 지정 (${list.length}개 부대)`, 1.4);
+  }
+
+  private selectGroup(n: number) {
+    const list = (this.groups.get(n) ?? []).filter((u) => this.battle.active(u));
+    if (!list.length) return;
+    this.selected.clear();
+    for (const u of list) this.selected.add(u);
+    const now = performance.now();
+    if (this.groupTap.n === n && now - this.groupTap.t < 400) {
+      const cx = list.reduce((s, u) => s + u.x, 0) / list.length, cz = list.reduce((s, u) => s + u.z, 0) / list.length;
+      this.rig.focus(cx, cz, Math.min(this.rig.dist, 80));
+    }
+    this.groupTap = { n, t: now };
+    this.audio.play('click');
+    this.hud.update(0, this.selected, this.speed, this.paused);
   }
 
   togglePause() { this.paused = !this.paused; this.hud.toast(this.paused ? '일시정지 — 일시정지 중에도 명령 가능' : '전투 재개', 1.2); }

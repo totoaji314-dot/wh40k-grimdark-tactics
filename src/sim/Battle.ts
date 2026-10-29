@@ -39,7 +39,7 @@ export interface Soldier {
   crouch: boolean;
 }
 
-export interface Order { type: 'idle' | 'move' | 'attack' | 'halt'; x?: number; z?: number; yaw?: number; target?: Unit | null; run?: boolean; charge?: boolean }
+export interface Order { type: 'idle' | 'move' | 'attack' | 'halt'; x?: number; z?: number; yaw?: number; target?: Unit | null; run?: boolean; charge?: boolean; files?: number }
 
 export type MoraleState = 'steady' | 'wavering' | 'routing' | 'shattered' | 'gone';
 
@@ -53,6 +53,8 @@ export interface Unit {
   initial: number;
   leader: Soldier | null;
   formation: FormationId;
+  /** soldiers per rank chosen by the player's drag (0 = automatic for the formation) */
+  files: number;
   spacing: number;
   x: number; z: number; yaw: number;
   order: Order;
@@ -106,6 +108,8 @@ const reloadAt = new WeakMap<Soldier, number>();
 function setReload(s: Soldier, delay: number) { reloadAt.set(s, delay); }
 /** Global melee damage scale: Total War-style melee grinds on for tens of seconds instead of resolving instantly. */
 export const MELEE_SCALE = 0.5;
+/** Most enemies that can press one soldier at once, by body mass: a guardsman 2, an ork 3, a marine or nob 4, a warboss 6. */
+export const meleeCap = (o: { def: { melee: { mass: number } } }) => { const m = o.def.melee.mass; return m >= 5 ? 6 : m >= 2.5 ? 4 : m >= 1.5 ? 3 : 2; };
 
 // ============================================================================ battle
 export class Battle {
@@ -122,6 +126,10 @@ export class Battle {
   private nid = 1;
   private moraleT = 0;
   private routeBudget = 0;
+  /** how many enemies are currently fighting each soldier (rebuilt every tick, bumped as foes are picked) */
+  attackers = new Map<Soldier, number>();
+  /** melee statistics for tests: engagements made, picks that skipped a crowded enemy, soldiers waiting for an opening */
+  meleeStats = { picks: 0, spread: 0, waiting: 0 };
 
   constructor(public map: BattleMap, public scenario: Scenario, public clips: ClipTable, seed = 42, public scale = 1) {
     this.rnd = mulberry32(seed);
@@ -151,7 +159,7 @@ export class Battle {
     const [px, pz] = this.nav.nearestWalkable(x, z);
     const u: Unit = {
       id: this.nid++, side, tpl, faction: tpl.faction, name, soldiers: [], initial: 0, leader: null,
-      formation: tpl.formation, spacing: tpl.spacing, x: px, z: pz, yaw,
+      formation: tpl.formation, files: 0, spacing: tpl.spacing, x: px, z: pz, yaw,
       order: { type: 'idle' }, path: [], pathI: 0, repathT: 0, run: false, fireAtWill: true, target: null, charging: false,
       morale: tpl.morale, mstate: 'steady', routs: 0, routT: 0, suppression: 0, fatigue: 0, inMelee: false,
       kills: 0, losses: 0, lossLog: [], killLog: [], abilityCd: 0, abilityT: 0, buffs: { waaagh: 0, aim: 0 }, attackedRear: 0,
@@ -197,6 +205,7 @@ export class Battle {
     if (L && L.alive && !L.foe && o.type !== 'idle' && (u.order.type !== o.type || u.order.target !== o.target)) play(L.anim, 'command', 1.15, 0.15, true);
     u.order = o;
     u.charging = false;
+    if (o.files !== undefined && o.files !== u.files) { u.files = o.files; this.layout(u, false); }
     if (o.type === 'move') {
       u.target = null;
       u.run = !!o.run;
@@ -218,7 +227,36 @@ export class Battle {
     }
   }
 
+  /** Attackers that can reach a soldier at once; a man down in a trench can only be hit from the parapet in front. */
+  capFor(o: Soldier) { const c = meleeCap(o); return this.map.inTrench(o.x, o.z) ? Math.max(1, c - 1) : c; }
+
   setFormation(u: Unit, f: FormationId) { u.formation = f; this.layout(u, false); }
+
+  /** Soldiers per rank the formation would use on its own (no player-dragged frontage). */
+  autoFiles(u: Unit) {
+    const n = Math.max(1, u.soldiers.filter((s) => s.alive && s !== u.leader).length);
+    const ranks = u.formation === 'column' ? Math.ceil(n / Math.min(5, n)) : u.formation === 'defensive' ? Math.max(1, Math.round(Math.sqrt(n) * 0.8)) : n <= 12 ? 2 : n <= 30 ? 3 : 4;
+    return Math.max(1, Math.ceil(n / ranks));
+  }
+
+  /** Lateral spacing between files for the unit's current formation. */
+  fileSpacing(u: Unit) { return u.spacing * (u.formation === 'loose' ? 1.9 : u.formation === 'defensive' ? 0.85 : 1); }
+
+  /** Deployment: put a unit straight onto a spot (no marching), soldiers snapped into their slots. */
+  place(u: Unit, x: number, z: number, yaw: number, files?: number) {
+    const [px, pz] = this.nav.nearestWalkable(x, z);
+    u.x = px; u.z = pz; u.yaw = yaw;
+    if (files !== undefined) u.files = files;
+    u.order = { type: 'idle' }; u.path = []; u.pathI = 0; u.moving = false; u.target = null; u.charging = false;
+    this.layout(u, false);
+    for (const s of u.soldiers) {
+      if (!s.alive) continue;
+      const [wx, wz] = this.slotWorld(u, s);
+      const [ax, az] = this.nav.nearestWalkable(wx, wz);
+      s.x = ax; s.z = az; s.y = this.map.heightAt(ax, az); s.yaw = yaw; s.vx = 0; s.vz = 0;
+      s.route = []; s.routeI = 0; s.coverOk = false; s.coverSX = 1e9; s.coverSZ = 1e9; s.state = 'idle';
+    }
+  }
 
   useAbility(u: Unit): boolean {
     const id = u.tpl.ability;
@@ -251,7 +289,7 @@ export class Battle {
     if (u.formation === 'defensive') sp *= 0.85;
     const leader = u.leader && u.leader.alive ? u.leader : null;
     const rest = alive.filter((s) => s !== leader);
-    const files = Math.max(1, Math.ceil(rest.length / ranks));
+    const files = u.files > 0 && u.formation !== 'column' ? Math.min(u.files, Math.max(1, rest.length)) : Math.max(1, Math.ceil(rest.length / ranks));
     rest.forEach((s, i) => {
       const r = Math.floor(i / files), c = i % files;
       const inRow = Math.min(files, rest.length - r * files);
@@ -273,6 +311,8 @@ export class Battle {
     if (this.over) { this.updateSoldiersDead(dt); return; }
     this.time += dt;
     this.rebuildHash();
+    this.attackers.clear();
+    for (const o of this.soldiers) if (o.alive && o.foe && o.foe.alive) this.attackers.set(o.foe, (this.attackers.get(o.foe) ?? 0) + 1);
     this.routeBudget = 14;
     for (const u of this.units) this.updateUnit(u, dt);
     for (const s of this.soldiers) this.updateSoldier(s, dt);
@@ -478,11 +518,25 @@ export class Battle {
     if (!s.foe && u.mstate !== 'routing') {
       const engage = u.inMelee || u.charging || u.meleeOnly || u.order.type === 'attack';
       const R = s.def.melee.reach + (engage ? 0.9 : 0.4);
-      let best: Soldier | null = null, bd = R;
-      this.near(s.x, s.z, R, (o) => { if (o.side !== s.side && o.alive) { const d = dist(s, o); if (d < bd) { bd = d; best = o; } } });
+      let best: Soldier | null = null, bd = 1e9, nearest: Soldier | null = null, nd = R;
+      this.near(s.x, s.z, R, (o) => {
+        if (o.side === s.side || !o.alive) return;
+        const d = dist(s, o);
+        if (d < nd) { nd = d; nearest = o; }
+        const crowd = this.attackers.get(o) ?? 0;
+        if (crowd >= this.capFor(o)) return;
+        const score = d + crowd * 0.35;
+        if (score < bd) { bd = score; best = o; }
+      });
+      if (!best && nearest && (this.attackers.get(nearest) ?? 0) < this.capFor(nearest) + 1 && (nearest as Soldier).foe === s) best = nearest; // always answer whoever is hitting you
       if (best) {
+        this.meleeStats.picks++;
+        if (nearest && best !== nearest) this.meleeStats.spread++;
         s.foe = best;
         const o = best as Soldier;
+        this.attackers.set(o, (this.attackers.get(o) ?? 0) + 1);
+        // first blows are staggered so a whole rank never swings in lockstep
+        s.meleeT = Math.max(s.meleeT, this.rnd() * 0.7);
         if (s.chargeT > 0 && u.charging) this.chargeImpact(s, o);
         if (!o.foe) o.foe = s;
         const ang = Math.abs(angDiff(o.unit.yaw, Math.atan2(s.x - o.x, s.z - o.z)));
@@ -521,15 +575,43 @@ export class Battle {
     let tx: number, tz: number, mode: 'walk' | 'run' | 'charge' = u.run ? 'run' : 'walk';
     if (u.mstate === 'routing') mode = 'run';
     let seek: Soldier | null = null;
+    let waitSpot = false;
+    tx = 0; tz = 0;
+    // defenders holding a trench do not climb out to chase: they gang up on enemies that reach the line and keep shooting
+    const holdTrench = !u.charging && !u.order.charge && !u.meleeOnly && this.map.inTrench(s.x, s.z);
     if ((u.charging || u.inMelee || (u.meleeOnly && u.target && u.order.type === 'attack')) && u.target) {
       // fight: go for the nearest enemy of the target unit (or anyone close)
-      let bd = u.charging ? 40 : 18;
-      for (const o of u.target.soldiers) if (o.alive) { const d = dist(s, o); if (d < bd) { bd = d; seek = o; } }
-      if (!seek) this.near(s.x, s.z, 10, (o) => { if (o.side !== s.side && o.alive) { const d = dist(s, o); if (d < bd) { bd = d; seek = o; } } });
+      let bd = holdTrench ? 4.5 : u.charging ? 40 : 18, crowdedSeek: Soldier | null = null, cd = bd;
+      const consider = (o: Soldier) => {
+        if (!o.alive) return;
+        const d = dist(s, o), crowd = this.attackers.get(o) ?? 0;
+        if (crowd >= this.capFor(o)) { if (d < cd) { cd = d; crowdedSeek = o; } return; }
+        const score = d + crowd * 0.6;
+        if (score < bd) { bd = score; seek = o; }
+      };
+      for (const o of u.target.soldiers) consider(o);
+      if (!seek) this.near(s.x, s.z, holdTrench ? 4.5 : 10, (o) => { if (o.side !== s.side) consider(o); });
+      if (!seek && crowdedSeek && !holdTrench) {
+        // every reachable enemy is already swarmed: hold a step outside the scrum and wait for an opening
+        const o = crowdedSeek as Soldier, d = Math.max(dist(s, o), 0.01), hold = o.def.melee ? s.def.melee.reach + 1.6 : 2.5;
+        tx = o.x + (s.x - o.x) / d * hold; tz = o.z + (s.z - o.z) / d * hold;
+        mode = 'walk'; this.meleeStats.waiting++;
+        seek = null;
+        waitSpot = true;
+      }
     }
     if (seek) {
-      tx = (seek as Soldier).x; tz = (seek as Soldier).z;
+      const o = seek as Soldier, crowd = this.attackers.get(o) ?? 0;
+      tx = o.x; tz = o.z;
+      if (crowd > 0) {
+        // later arrivals swing out to the sides instead of queueing behind the first attacker (rear attacks come from unit manoeuvre, not from individuals wrapping round)
+        const base = Math.atan2(s.x - o.x, s.z - o.z), side = (s.id & 1) ? 1 : -1;
+        const a = base + side * Math.min(1.2, 0.6 * crowd), r = s.def.melee.reach * 0.9;
+        tx = o.x + Math.sin(a) * r; tz = o.z + Math.cos(a) * r;
+      }
       mode = u.charging ? 'charge' : 'run';
+    } else if (waitSpot) {
+      // keep tx / tz from the waiting spot
     } else {
       [tx, tz] = this.slotWorld(u, s);
       // halted units take cover: trench cells, sandbags, walls, craters near the formation slot
@@ -638,7 +720,10 @@ export class Battle {
     const main = s.def.weapon ? WEAPONS[s.def.weapon] : null;
     const pistol = s.def.pistol ? WEAPONS[s.def.pistol] : null;
     if (!main && !pistol) return false;
-    if (u.inMelee || u.charging) return false; // units locked in melee push into the fight instead of shooting
+    // soldiers locked in melee fight instead of shooting; the rest of a melee-locked unit only keeps firing from a trench line
+    if (s.foe || u.charging) return false;
+    const trenchLine = u.inMelee && !u.order.charge && this.map.inTrench(s.x, s.z);
+    if (u.inMelee && !trenchLine) return false;
     // pick / refresh a target soldier with line of sight
     if (!s.target || !s.target.alive || s.target.unit !== t || s.losT <= 0) {
       s.losT = 0.8 + this.rnd() * 0.6;
@@ -646,7 +731,7 @@ export class Battle {
       for (const o of t.soldiers) {
         if (!o.alive) continue;
         let d = dist(s, o);
-        if (o.foe) d += 25; // avoid shooting into melee
+        if (o.foe) { if (trenchLine) continue; d += 25; } // avoid shooting into melee (never from a trench line into the scrum)
         if (d < bd) { bd = d; best = o; }
       }
       s.target = best;
@@ -786,7 +871,8 @@ export class Battle {
     if (f.unit.formation === 'defensive') def += 12;
     if (f.unit.attackedRear > 0) def -= 18;
     // defenders fighting from a trench against attackers outside it
-    if (this.map.inTrench(f.x, f.z) && !this.map.inTrench(s.x, s.z)) { def += 25; atk -= 15; }
+    // (attackers outside strike down from the parapet at a disadvantage; ones who dropped in still face a prepared defender)
+    if (this.map.inTrench(f.x, f.z)) { if (!this.map.inTrench(s.x, s.z)) { def += 30; atk -= 15; } else def += 12; }
     const p = Math.max(0.08, Math.min(0.92, atk / (atk + Math.max(5, def))));
     const hit = this.rnd() < p;
     this.events.push({ type: 'melee', s, foe: f, hit });
@@ -843,6 +929,8 @@ export class Battle {
     if (u.leader && u.leader.alive) m += 6;
     if (u.inMelee) m += (u.killLog.length > u.lossLog.length ? 10 : -8);
     if (u.faction === 'orks') m += alive >= 15 ? 12 : alive < 6 ? -12 : 0;
+    // Krieg trait: dug in, they hold the line far beyond what other regiments would
+    if (u.faction === 'krieg') { const dug = u.soldiers.filter((x) => x.alive && this.map.inTrench(x.x, x.z)).length; if (dug > alive * 0.4) m += 14; }
     // auras of officers / bosses / sergeants of nearby friendly units
     for (const v of this.units) {
       if (v.side !== u.side || !v.leader || !v.leader.alive || v.mstate === 'routing') continue;

@@ -125,9 +125,10 @@ export class Menu {
 export const HELP_HTML = `<h2 class="serif" style="color:var(--brass);margin-top:0">조작법</h2>
 <h3>PC (마우스 · 키보드)</h3>
 <div><b>좌클릭</b> 부대 선택 · <b>Shift/Ctrl+클릭</b> 다중 선택 · <b>좌클릭 드래그</b> 범위 선택 · <kbd>Ctrl</kbd>+<kbd>A</kbd> 전체 선택 · <kbd>Tab</kbd> 다음 부대</div>
-<div><b>우클릭 (땅)</b> 이동 · <b>우클릭 드래그</b> 진형 전선·방향 지정 · <b>우클릭 (적)</b> 공격 (근접 부대는 돌격) · <b>더블 우클릭</b> 달려서 이동/공격</div>
+<div><b>배치 단계</b> 전투 전 파란 구역 안에 부대를 자유롭게 배치하고 <b>전투 시작</b>(Enter)</div>
+<div><b>우클릭 (땅)</b> 이동 · <b>우클릭 드래그</b> 전선의 방향과 <b>폭</b> 지정(길게 끌면 얇고 넓은 전열, 짧게 끌면 두꺼운 대형) · <b>우클릭 (적)</b> 공격 (근접 부대는 돌격) · <b>더블 우클릭</b> 달려서 이동/공격</div>
 <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>/화살표 카메라 이동 · <kbd>Q</kbd><kbd>E</kbd> 회전 · 마우스 휠/<kbd>Z</kbd><kbd>X</kbd> 확대·축소 · 휠 클릭 드래그 회전·기울기</div>
-<div><kbd>H</kbd> 정지 · <kbd>R</kbd> 달리기 · <kbd>C</kbd> 돌격 · <kbd>F</kbd> 자유 사격 · <kbd>G</kbd> 특수 능력 · <kbd>1</kbd>~<kbd>4</kbd> 전열/종대/산개/방어 진형</div>
+<div><kbd>H</kbd> 정지 · <kbd>R</kbd> 달리기 · <kbd>C</kbd> 돌격 · <kbd>F</kbd> 자유 사격 · <kbd>G</kbd> 특수 능력 · <kbd>Alt</kbd>+<kbd>1</kbd>~<kbd>4</kbd> 전열/종대/산개/방어 진형 (그룹이 없을 때는 <kbd>1</kbd>~<kbd>4</kbd>만으로도) · <kbd>Ctrl</kbd>+<kbd>숫자</kbd> 부대 그룹 지정 · <kbd>숫자</kbd> 그룹 선택(두 번: 카메라 이동)</div>
 <div><kbd>Space</kbd> 일시정지 (일시정지 중에도 명령 가능) · <kbd>+</kbd><kbd>-</kbd> 배속 · <kbd>Esc</kbd> 메뉴</div>
 <h3>모바일 · 태블릿 (디벗)</h3>
 <div>부대 카드나 부대 깃발을 <b>탭</b>해 선택 → <b>땅을 탭</b>해 이동, <b>적을 탭</b>해 공격 · 땅을 <b>길게 누르면</b> 달려서 이동</div>

@@ -3,3 +3,5 @@ dist/
 local_only/
 *.blend1
 .env
+
+__pycache__/

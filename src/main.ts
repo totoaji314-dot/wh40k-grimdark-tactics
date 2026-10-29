@@ -47,10 +47,10 @@ async function boot() {
   const pick = () => menu.scenarios((sc, d, s) => start(sc, d, s), title);
   const openSettings = (back: () => void) => menu.settings(settings, detected, (ns) => { Object.assign(settings, ns); saveSettings(settings); audio.setVolume(settings.volume, settings.music); back(); }, back);
 
-  const start = async (sc: Scenario, difficulty: number, scale: number) => {
+  const start = async (sc: Scenario, difficulty: number, scale: number, deploy = true) => {
     game?.dispose(); game = null;
     const progress = menu.loading();
-    const g = new Game(renderer, ui, settings, audio, { scenario: sc, difficulty, scale, quality: quality() });
+    const g = new Game(renderer, ui, settings, audio, { scenario: sc, difficulty, scale, quality: quality(), deploy });
     try {
       g.resize();
       await g.load(progress);
@@ -76,14 +76,14 @@ async function boot() {
 
   // test hooks for automated checks: ?auto=<scenario>&q=<quality>
   (window as unknown as { __app: unknown }).__app = {
-    start: (id: string, diff = 1, scale = 1, qq?: QualityLevel) => { if (qq) settings.quality = qq; return start(SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0], diff, scale); },
+    start: (id: string, diff = 1, scale = 1, qq?: QualityLevel, deploy = false) => { if (qq) settings.quality = qq; return start(SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0], diff, scale, deploy); },
     get game() { return game; },
     step: (n: number, dt = 1 / 30) => { for (let i = 0; i < n; i++) game?.frame(dt); },
     presets: PRESETS, detected,
   };
   if (q.has('auto')) {
     if (q.get('q')) settings.quality = q.get('q') as QualityLevel;
-    start(SCENARIOS.find((s) => s.id === q.get('auto')) ?? SCENARIOS[0], 1, Number(q.get('scale') ?? 1));
+    start(SCENARIOS.find((s) => s.id === q.get('auto')) ?? SCENARIOS[0], 1, Number(q.get('scale') ?? 1), q.get('deploy') === '1');
   } else title();
 }
 

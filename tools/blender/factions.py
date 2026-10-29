@@ -135,8 +135,8 @@ def heavy_bolter(rig, which='weapon', s=1.0, mat='gunmetal', trim='trim', stubbe
 
 # =============================================================================== SPACE MARINES
 def marine_materials(seed=0.0):
-    armour = srgb(0x23448f)
-    mat_node_setup('armor', armour, rough=0.38, metal=0.35, edge=(srgb(0x9aa2b2), 0.09), grime=0.4, noise_scale=10, bump=0.2, scratches=1.0)
+    armour = srgb(0x34508a)
+    mat_node_setup('armor', armour, rough=0.38, metal=0.35, edge=(srgb(0xa8b4c8), 0.12), grime=0.45, noise_scale=10, bump=0.2, scratches=1.0)
     mat_node_setup('trim', srgb(0xc8a04a), rough=0.32, metal=1.0, edge=(srgb(0xf0dca0), 0.08), grime=0.55, noise_scale=20, bump=0.15)
     mat_node_setup('black', srgb(0x1b1c1f), rough=0.62, metal=0.2, grime=0.2, noise_scale=26, bump=0.35)
     mat_node_setup('gunmetal', srgb(0x2a2c31), rough=0.42, metal=0.85, edge=(srgb(0xb8bcc4), 0.08), grime=0.4, noise_scale=24, bump=0.2, scratches=1.2)
@@ -151,7 +151,7 @@ def marine_materials(seed=0.0):
 
 
 def marine_body(kind):
-    b = dict(hip_h=1.02, knee_h=0.56, ankle_h=0.13, hip_w=0.155, spine_z=1.13, chest_z=1.33, neck_z=1.68, head_z=1.77, top_z=2.07,
+    b = dict(hip_h=1.02, knee_h=0.56, ankle_h=0.13, hip_w=0.155, spine_z=1.13, chest_z=1.33, neck_z=1.65, head_z=1.735, top_z=2.03,
              head_y=-0.03, neck_y=-0.01, sh_w=0.26, sh_z=1.62, ua=0.32, fa=0.30, hand=0.12, arm_out=16, foot=0.32,
              grip_r=(-0.10, -0.38, 1.45), w_yaw=27, offhand=(0.21, -0.42, 1.42), o_yaw=-8,
              muzzle=(0, 0.64, 0.085), muzzle2=(0, 0.26, 0.078))
@@ -170,119 +170,168 @@ MARINE_STYLE = dict(stance=0.055, hunch=3, weight=1.0, knee=0.045,
                     charge=dict(S=1.06, frames=20, duty=0.36, lift=0.26, bob=0.06, lean=14))
 
 
+def pauldron_shell(side, sx):
+    """Mk VII style pauldron: flattened crown, near-vertical walls with a slight flare, gold rim, raised outer face."""
+    import bmesh as _b
+    shell = ellipsoid(0.205, 0.25, 0.25, 28, 18)
+    for v in shell.verts:
+        if v.co.z > 0:
+            v.co.z *= 0.8
+    cut(shell, (0, 0, -0.05), (0, 0, 1), 'above')
+    edges = [e for e in shell.edges if e.is_boundary]
+    ext = _b.ops.extrude_edge_only(shell, edges=edges)
+    for v in [g for g in ext['geom'] if isinstance(g, _b.types.BMVert)]:
+        v.co.z -= 0.14; v.co.x *= 1.04; v.co.y *= 1.04
+    cut(shell, (-0.15, 0, 0), (1, 0, 0), 'above')      # open toward the body
+    fill_holes(shell)
+    _b.ops.recalc_face_normals(shell, faces=shell.faces)
+    rim = torus(0.21, 0.023, seg=36, seg2=6)
+    xf(rim, (0, 0, -0.19), scale=(1, 0.256 / 0.21, 1))
+    cut(rim, (-0.13, 0, 0), (1, 0, 0), 'above')
+    band = torus(0.204, 0.011, seg=36, seg2=5)
+    xf(band, (0, 0, -0.02), scale=(1, 0.248 / 0.204, 1))
+    cut(band, (-0.12, 0, 0), (1, 0, 0), 'above')
+    face = rbox(0.03, 0.28, 0.19, bev=0.012, seg=2)
+    xf(face, (0.2, 0.0, -0.095))
+    return [(shell, 'armor'), (rim, 'trim'), (band, 'trim'), (face, 'armor')]
+
+
 def marine_parts(rig, kind):
     b = rig.b
     parts = []
     A = 'armor'
-    # ---------------- legs
+    # ---------------- legs (heavier, SM1-like proportions: thick cuisses, big knee pads, flared greaves)
     for side, sx in (('L', 1), ('R', -1)):
         th, sh, ft, ts = 'thigh.' + side, 'shin.' + side, 'foot.' + side, 'tasset.' + side
         tl = rig.bone_len(th); sl = rig.bone_len(sh)
-        parts.append(Part(rig.L(cyl(0.095, tl * 1.02, seg=14), th, (0, tl * 0.5, 0), rot=(90, 0, 0)), 'black', th))
-        parts.append(Part(rig.L(rbox(0.25, tl * 0.80, 0.28, bev=0.075, seg=4, taper=(0.86, 0.9)), th, (0, tl * 0.50, 0.01)), A, th))
-        parts.append(Part(rig.L(rbox(0.08, tl * 0.64, 0.05, bev=0.02), th, (0, tl * 0.52, 0.14)), A, th))
-        parts.append(Part(rig.L(sphere(0.10, 14, 8), sh, (0, 0.0, -0.01)), 'black', blend(rig, [th, sh], 0.06)))
-        parts.append(Part(rig.L(rbox(0.19, 0.22, 0.12, bev=0.055, seg=3, taper=(0.8, 0.78)), sh, (0, 0.035, 0.115), rot=(-6, 0, 0)), A, sh))
-        parts.append(Part(rig.L(rbox(0.06, 0.06, 0.03, bev=0.012), sh, (0, 0.04, 0.175)), 'white', sh))
-        parts.append(Part(rig.L(rbox(0.225, sl * 0.74, 0.245, bev=0.07, seg=4, taper_y=(1.12, 1.10)), sh, (0, sl * 0.55, 0.0)), A, sh))
-        parts.append(Part(rig.L(ellipsoid(0.10, 0.16, 0.09, 14, 8), sh, (0, sl * 0.36, -0.075)), A, sh))
-        parts.append(Part(rig.L(rbox(0.08, sl * 0.62, 0.055, bev=0.02), sh, (0, sl * 0.52, 0.13)), A, sh))
-        parts.append(Part(rig.L(cyl(0.115, 0.08, seg=16, bev=0.012), sh, (0, sl * 0.98, 0.0), rot=(90, 0, 0)), 'black', sh))
+        parts.append(Part(rig.L(cyl(0.105, tl * 1.02, seg=14), th, (0, tl * 0.5, 0), rot=(90, 0, 0)), 'black', th))
+        parts.append(Part(rig.L(rbox(0.29, tl * 0.82, 0.31, bev=0.085, seg=4, taper=(0.86, 0.9)), th, (0, tl * 0.50, 0.012)), A, th))
+        parts.append(Part(rig.L(rbox(0.09, tl * 0.66, 0.05, bev=0.02), th, (0, tl * 0.52, 0.16)), A, th))
+        parts.append(Part(rig.L(rbox(0.30, 0.05, 0.30, bev=0.02), th, (0, tl * 0.14, 0.012)), 'black', th))
+        parts.append(Part(rig.L(sphere(0.11, 14, 8), sh, (0, 0.0, -0.01)), 'black', blend(rig, [th, sh], 0.06)))
+        # knee pad with a raised crux emblem
+        parts.append(Part(rig.L(rbox(0.225, 0.26, 0.13, bev=0.06, seg=3, taper=(0.84, 0.8)), sh, (0, 0.04, 0.125), rot=(-6, 0, 0)), A, sh))
+        crux = extrude([(-0.012, 0.05), (0.012, 0.05), (0.012, 0.012), (0.05, 0.012), (0.05, -0.012), (0.012, -0.012), (0.012, -0.05),
+                        (-0.012, -0.05), (-0.012, -0.012), (-0.05, -0.012), (-0.05, 0.012), (-0.012, 0.012)], 0.018, bev=0.003)
+        parts.append(Part(rig.L(crux, sh, (0, 0.045, 0.195), rot=(84, 0, 0)), 'white', sh))
+        parts.append(Part(rig.L(rbox(0.25, sl * 0.74, 0.27, bev=0.075, seg=4, taper_y=(1.12, 1.10)), sh, (0, sl * 0.55, 0.0)), A, sh))
+        parts.append(Part(rig.L(ellipsoid(0.11, 0.17, 0.10, 14, 8), sh, (0, sl * 0.36, -0.08)), A, sh))
+        parts.append(Part(rig.L(rbox(0.09, sl * 0.62, 0.055, bev=0.02), sh, (0, sl * 0.52, 0.145)), A, sh))
+        parts.append(Part(rig.L(rbox(0.30, 0.11, 0.31, bev=0.04, seg=2), sh, (0, sl * 0.90, 0.0)), A, sh))
+        parts.append(Part(rig.L(cyl(0.125, 0.07, seg=16, bev=0.012), sh, (0, sl * 0.99, 0.0), rot=(90, 0, 0)), 'black', sh))
         x = b.hip_w * sx
-        parts.append(Part(xf(rbox(0.225, 0.36, 0.17, bev=0.065, seg=3), (x, -0.08, 0.095)), A, ft))
-        parts.append(Part(xf(rbox(0.215, 0.14, 0.13, bev=0.055, seg=3, taper=(0.9, 0.78)), (x, -0.255, 0.07)), A, ft))
-        parts.append(Part(xf(rbox(0.235, 0.46, 0.04, bev=0.012), (x, -0.105, 0.02)), 'black', ft))
-        parts.append(Part(xf(rbox(0.06, 0.05, 0.06, bev=0.012), (x + sx * 0.11, 0.0, 0.13)), 'black', ft))
-        # thigh plates hanging from the belt follow the thigh half way
-        parts.append(Part(xf(xf(rbox(0.21, 0.07, 0.28, bev=0.035, seg=2, taper=(1.12, 1.0)), rot=(4, -sx * 16, sx * 34)), (sx * 0.225, -0.075, 0.90)), A, ts))
-        parts.append(Part(xf(xf(rbox(0.07, 0.08, 0.025, bev=0.008), rot=(4, -sx * 16, sx * 34)), (sx * 0.26, -0.12, 1.00)), 'trim', ts))
-    # ---------------- pelvis / waist
-    parts.append(P(rbox(0.24, 0.12, 0.24, bev=0.05, seg=3, taper=(1.4, 1.0)), A, 'hips', (0, -0.16, 0.94)))
-    parts.append(P(rbox(0.14, 0.03, 0.12, bev=0.012), 'trim', 'hips', (0, -0.225, 0.965)))
-    parts.append(P(rbox(0.54, 0.38, 0.095, bev=0.035, seg=2), 'black', 'hips', (0, 0.0, 1.07)))
-    parts.append(P(rbox(0.15, 0.05, 0.11, bev=0.015), 'trim', 'hips', (0, -0.195, 1.07)))
-    parts.append(P(sphere(0.03, 10, 6), 'red', 'hips', (0, -0.225, 1.07)))
-    parts.append(P(rbox(0.42, 0.08, 0.26, bev=0.03, taper=(1.15, 1.0)), A, 'hips', (0, 0.18, 0.95), rot=(-8, 0, 0)))
-    parts.append(P(rbox(0.10, 0.09, 0.12, bev=0.02), 'leather', 'hips', (0.20, 0.10, 1.00)))
-    parts.append(P(rbox(0.10, 0.09, 0.12, bev=0.02), 'leather', 'hips', (-0.22, 0.06, 1.00)))
-    parts.append(P(cyl(0.18, 0.22, seg=18), 'black', 'spine', (0, 0.01, 1.20)))
-    for z in (1.15, 1.215):
-        parts.append(P(torus(0.18, 0.022, seg=20, seg2=6), 'black', 'spine', (0, 0.015, z)))
-    parts.append(P(rbox(0.30, 0.08, 0.085, bev=0.03, seg=2, taper=(0.9, 1)), A, 'spine', (0, -0.165, 1.175)))
-    parts.append(P(rbox(0.34, 0.08, 0.085, bev=0.03, seg=2, taper=(0.9, 1)), A, 'spine', (0, -0.17, 1.255)))
-    parts += P2(rbox(0.10, 0.20, 0.16, bev=0.035, seg=2), A, 'spine', (0.19, -0.01, 1.22))
-    # ---------------- torso
-    parts.append(P(rbox(0.64, 0.42, 0.40, bev=0.11, seg=4, taper=(1.08, 1.0)), A, 'chest', (0, 0.0, 1.49)))
-    parts += P2(rbox(0.28, 0.12, 0.23, bev=0.065, seg=3), A, 'chest', (0.14, -0.18, 1.545), rot=(-8, 0, 10))
+        parts.append(Part(xf(rbox(0.25, 0.40, 0.18, bev=0.07, seg=3), (x, -0.09, 0.10)), A, ft))
+        parts.append(Part(xf(rbox(0.24, 0.16, 0.135, bev=0.06, seg=3, taper=(0.9, 0.78)), (x, -0.285, 0.072)), A, ft))
+        parts.append(Part(xf(rbox(0.26, 0.52, 0.045, bev=0.014), (x, -0.115, 0.022)), 'black', ft))
+        parts.append(Part(xf(rbox(0.07, 0.06, 0.07, bev=0.014), (x + sx * 0.125, 0.0, 0.14)), 'black', ft))
+        parts.append(Part(xf(xf(rbox(0.23, 0.07, 0.30, bev=0.035, seg=2, taper=(1.12, 1.0)), rot=(4, -sx * 16, sx * 34)), (sx * 0.245, -0.075, 0.90)), A, ts))
+        parts.append(Part(xf(xf(rbox(0.08, 0.08, 0.025, bev=0.008), rot=(4, -sx * 16, sx * 34)), (sx * 0.28, -0.12, 1.00)), 'trim', ts))
+    # ---------------- pelvis / waist: codpiece, belt with the round buckle, ribbed abdominal cabling
+    parts.append(P(rbox(0.26, 0.13, 0.25, bev=0.05, seg=3, taper=(1.45, 1.0)), A, 'hips', (0, -0.165, 0.94)))
+    parts.append(P(rbox(0.16, 0.025, 0.035, bev=0.008), 'trim', 'hips', (0, -0.233, 1.0)))
+    parts.append(P(rbox(0.58, 0.40, 0.10, bev=0.035, seg=2), 'black', 'hips', (0, 0.0, 1.07)))
+    parts.append(P(cyl(0.085, 0.05, seg=24, bev=0.01), A, 'hips', (0, -0.205, 1.07), rot=(90, 0, 0)))
+    parts.append(P(torus(0.07, 0.011, seg=24, seg2=5), 'gunmetal', 'hips', (0, -0.232, 1.07), rot=(90, 0, 0)))
+    parts.append(P(cyl(0.032, 0.02, seg=16), 'black', 'hips', (0, -0.236, 1.07), rot=(90, 0, 0)))
+    for k in range(-2, 3):
+        if k == 0:
+            continue
+        parts.append(P(rbox(0.06, 0.03, 0.07, bev=0.008), 'gunmetal', 'hips', (k * 0.11, -0.2, 1.07)))
+    parts.append(P(rbox(0.44, 0.08, 0.27, bev=0.03, taper=(1.15, 1.0)), A, 'hips', (0, 0.185, 0.95), rot=(-8, 0, 0)))
+    parts.append(P(rbox(0.10, 0.09, 0.12, bev=0.02), 'leather', 'hips', (0.22, 0.10, 1.00)))
+    parts.append(P(rbox(0.10, 0.09, 0.12, bev=0.02), 'leather', 'hips', (-0.24, 0.06, 1.00)))
+    parts.append(P(cyl(0.17, 0.24, seg=20), 'black', 'spine', (0, 0.01, 1.215)))
+    for i in range(8):
+        z = 1.115 + i * 0.027
+        parts.append(P(torus(0.172 + 0.006 * math.sin(i * 0.9), 0.016, seg=22, seg2=6), 'gunmetal' if i % 2 else 'black', 'spine', (0, 0.012, z), scale=(1.12, 1.0, 1)))
+    parts += P2(rbox(0.10, 0.20, 0.17, bev=0.035, seg=2), A, 'spine', (0.205, -0.01, 1.22))
+    # ---------------- torso: broad breastplate with a central keel, aquila and skull
+    parts.append(P(rbox(0.68, 0.44, 0.42, bev=0.12, seg=4, taper=(1.1, 1.0)), A, 'chest', (0, 0.0, 1.50)))
+    pec = ellipsoid(0.34, 0.13, 0.20, 26, 14)
+    cut(pec, (0, 0, 0), (0, -1, 0), 'above'); fill_holes(pec)
+    parts.append(P(pec, A, 'chest', (0, -0.15, 1.555)))
+    parts.append(P(rbox(0.05, 0.06, 0.30, bev=0.02, taper=(0.6, 1)), A, 'chest', (0, -0.27, 1.43), rot=(-4, 0, 0)))
     wing = [(0.0, 0.025), (0.05, 0.05), (0.11, 0.085), (0.19, 0.105), (0.26, 0.10), (0.21, 0.07), (0.26, 0.055), (0.20, 0.035),
             (0.24, 0.015), (0.17, 0.005), (0.18, -0.02), (0.11, -0.012), (0.06, -0.03), (0.02, -0.045), (0.0, -0.035)]
     full = wing + [(-x, z) for (x, z) in reversed(wing)][1:-1]
-    parts.append(P(extrude(full, 0.03, bev=0.007), 'trim', 'chest', (0, -0.255, 1.575), rot=(-6, 0, 0)))
-    parts += P2(sphere(0.024, 10, 6), 'trim', 'chest', (0.03, -0.272, 1.625))
-    collar = lathe([(0.20, 0.0), (0.205, 0.07), (0.19, 0.14), (0.165, 0.17)], seg=24, arc=230)
-    parts.append(P(collar, A, 'chest', (0, 0.02, 1.66), rot=(0, 0, -25)))
-    parts.append(P(torus(0.165, 0.014, seg=24, seg2=5, arc=230), 'trim', 'chest', (0, 0.02, 1.83), rot=(0, 0, -25)))
-    # backpack
-    parts.append(P(rbox(0.54, 0.22, 0.46, bev=0.07, seg=3), A, 'chest', (0, 0.33, 1.60)))
-    parts.append(P(rbox(0.46, 0.18, 0.07, bev=0.02), 'black', 'chest', (0, 0.33, 1.86)))
+    parts.append(P(extrude(full, 0.032, bev=0.007), 'trim', 'chest', (0, -0.282, 1.585), rot=(-8, 0, 0), scale=(1.18, 1, 1.18)))
+    for k in range(4):
+        feather = extrude([(0.04, 0.0), (0.21 - k * 0.035, 0.012), (0.20 - k * 0.035, -0.006), (0.04, -0.012)], 0.012, bev=0.002)
+        parts += P2(feather, 'trim', 'chest', (0.0, -0.302, 1.60 - k * 0.022), rot=(-8, 0, -4 - k * 5))
+    skull = ellipsoid(0.042, 0.035, 0.048, 14, 10)
+    parts.append(P(skull, 'white', 'chest', (0, -0.31, 1.585)))
+    parts.append(P(rbox(0.05, 0.03, 0.022, bev=0.006), 'white', 'chest', (0, -0.312, 1.545)))
+    parts += P2(sphere(0.011, 8, 6), 'black', 'chest', (0.016, -0.343, 1.592))
+    collar = lathe([(0.215, 0.0), (0.225, 0.07), (0.21, 0.14), (0.18, 0.185)], seg=28, arc=250)
+    parts.append(P(collar, A, 'chest', (0, 0.02, 1.64), rot=(0, 0, -35)))
+    parts.append(P(torus(0.18, 0.015, seg=28, seg2=5, arc=250), 'trim', 'chest', (0, 0.02, 1.825), rot=(0, 0, -35)))
+    # backpack: big power plant with two exhaust stacks, side intakes and vents
+    parts.append(P(rbox(0.62, 0.26, 0.52, bev=0.08, seg=3), A, 'chest', (0, 0.35, 1.62)))
+    parts.append(P(rbox(0.52, 0.20, 0.08, bev=0.02), 'black', 'chest', (0, 0.35, 1.90)))
+    parts.append(P(rbox(0.44, 0.05, 0.30, bev=0.02), 'gunmetal', 'chest', (0, 0.49, 1.60)))
     for sx in (1, -1):
-        parts.append(P(cyl(0.06, 0.32, seg=16, r2=0.05, bev=0.008), 'gunmetal', 'chest', (sx * 0.17, 0.42, 1.92), rot=(-18, 0, 0)))
-        parts.append(P(torus(0.054, 0.013, seg=16, seg2=6), 'trim', 'chest', (sx * 0.17, 0.468, 2.065), rot=(-18, 0, 0)))
-        parts.append(P(cyl(0.04, 0.02, seg=12), 'black', 'chest', (sx * 0.17, 0.472, 2.08), rot=(-18, 0, 0)))
-        parts.append(P(rbox(0.05, 0.16, 0.30, bev=0.02), 'gunmetal', 'chest', (sx * 0.29, 0.33, 1.58)))
-    parts.append(P(array(rbox(0.38, 0.02, 0.025, bev=0.005), 5, (0, 0, -0.045)), 'black', 'chest', (0, 0.442, 1.66)))
-    parts.append(P(sphere(0.05, 14, 8), 'trim', 'chest', (0, 0.44, 1.46), scale=(1, 0.55, 1)))
-    parts.append(P(rbox(0.30, 0.09, 0.09, bev=0.025), 'gunmetal', 'chest', (0, 0.43, 1.39)))
-    # ---------------- arms
+        parts.append(P(cyl(0.07, 0.36, seg=18, r2=0.058, bev=0.008), 'gunmetal', 'chest', (sx * 0.18, 0.45, 1.95), rot=(-20, 0, 0)))
+        parts.append(P(torus(0.064, 0.014, seg=18, seg2=6), 'trim', 'chest', (sx * 0.18, 0.51, 2.11), rot=(-20, 0, 0)))
+        parts.append(P(cyl(0.048, 0.02, seg=14), 'black', 'chest', (sx * 0.18, 0.515, 2.125), rot=(-20, 0, 0)))
+        for k in range(3):
+            parts.append(P(torus(0.072, 0.007, seg=18, seg2=4), 'black', 'chest', (sx * 0.18, 0.43 + k * 0.012, 1.85 + k * 0.05), rot=(-20, 0, 0)))
+        parts.append(P(rbox(0.07, 0.20, 0.34, bev=0.02), 'gunmetal', 'chest', (sx * 0.335, 0.34, 1.58)))
+        parts.append(P(array(rbox(0.075, 0.16, 0.012), 6, (0, 0, -0.045)), 'black', 'chest', (sx * 0.338, 0.34, 1.70)))
+    parts.append(P(array(rbox(0.38, 0.02, 0.025, bev=0.005), 5, (0, 0, -0.045)), 'black', 'chest', (0, 0.518, 1.70)))
+    parts.append(P(cyl(0.07, 0.03, seg=20, bev=0.006), 'trim', 'chest', (0, 0.52, 1.46), rot=(90, 0, 0)))
+    parts.append(P(rbox(0.32, 0.09, 0.09, bev=0.025), 'gunmetal', 'chest', (0, 0.46, 1.38)))
+    # ---------------- arms: tall pauldrons, ribbed elbow joints, heavy vambraces and gauntlets
     for side, sx in (('L', 1), ('R', -1)):
         pa, ua, fa = 'pauldron.' + side, 'upper_arm.' + side, 'forearm.' + side
         ul = rig.bone_len(ua); fl = rig.bone_len(fa)
-        paul = ellipsoid(0.235, 0.255, 0.19, 24, 14)
-        cut(paul, (0, 0, -0.01), (0, 0, 1), 'above')
-        fill_holes(paul)
-        rim = torus(0.235, 0.028, seg=32, seg2=6)
-        xf(rim, (0, 0, -0.005), scale=(1, 1.08, 1))
-        band = torus(0.20, 0.012, seg=32, seg2=5)
-        xf(band, (0, 0, 0.10), scale=(1, 1.08, 1))
+        pieces = pauldron_shell(side, sx)
         ins = join_bm(xf(torus(0.075, 0.013, seg=20, seg2=5), rot=(0, 90, 0)),
                       xf(extrude([(-0.048, -0.042), (0.0, 0.055), (0.048, -0.042), (0.027, -0.042), (0.0, 0.012), (-0.027, -0.042)], 0.014), rot=(0, 0, 90)))
-        xf(ins, (0.19, 0.0, 0.085), rot=(0, 40, 0))
-        for bm_, mat in ((paul, A), (rim, 'trim'), (band, A), (ins, 'white' if side == 'L' else 'trim')):
+        xf(ins, (0.222, 0.0, -0.095))
+        pieces.append((ins, 'white' if side == 'L' else 'trim'))
+        for bm_, mat in pieces:
             if sx < 0:
                 for vv in bm_.verts:
                     vv.co.x = -vv.co.x
                 import bmesh as _b
                 _b.ops.reverse_faces(bm_, faces=bm_.faces)
-            xf(bm_, rot=(0, sx * 30, 0))
-            xf(bm_, (sx * 0.34, -0.005, 1.63))
+            xf(bm_, rot=(0, sx * 18, 0))
+            xf(bm_, (sx * 0.365, -0.005, 1.64))
             parts.append(Part(bm_, mat, pa))
-        parts.append(Part(rig.L(cyl(0.08, ul, seg=12), ua, (0, ul * 0.5, 0), rot=(90, 0, 0)), 'black', ua))
-        parts.append(Part(rig.L(rbox(0.185, ul * 0.70, 0.19, bev=0.065, seg=3), ua, (0, ul * 0.58, 0.0)), A, ua))
-        parts.append(Part(rig.L(sphere(0.08, 12, 8), fa, (0, 0, -0.01)), 'black', blend(rig, [ua, fa], 0.05)))
-        parts.append(Part(rig.L(rbox(0.12, 0.11, 0.09, bev=0.035, seg=2), fa, (0, 0.03, -0.075), rot=(-20, 0, 0)), A, fa))
-        parts.append(Part(rig.L(rbox(0.17, fl * 0.80, 0.17, bev=0.055, seg=3, taper_y=(0.86, 0.86)), fa, (0, fl * 0.55, 0.0)), A, fa))
-        parts.append(Part(rig.L(torus(0.075, 0.015, seg=16, seg2=5), fa, (0, fl * 0.96, 0), rot=(90, 0, 0)), 'trim', fa))
-        parts += fist(rig, side, scale=1.55, mat=A, glove='black')
-    # ---------------- head
-    parts.append(P(cyl(0.09, 0.14, seg=12), 'black', 'neck', (0, -0.015, 1.74)))
-    parts.append(P(ellipsoid(0.138, 0.158, 0.148, 22, 14), A, 'head', (0, -0.015, 1.935)))
-    parts.append(P(rbox(0.215, 0.10, 0.125, bev=0.04, seg=3), A, 'head', (0, -0.12, 1.895)))
-    parts.append(P(rbox(0.105, 0.095, 0.105, bev=0.03, seg=2, taper=(0.78, 0.7)), 'gunmetal', 'head', (0, -0.19, 1.845), rot=(18, 0, 0)))
-    parts.append(P(array(rbox(0.007, 0.02, 0.06), 4, (0.019, 0, 0)), 'black', 'head', (-0.0285, -0.238, 1.845), rot=(18, 0, 0)))
-    parts.append(P(rbox(0.225, 0.05, 0.035, bev=0.015), A, 'head', (0, -0.158, 1.968), rot=(-8, 0, 0)))
+        parts.append(Part(rig.L(cyl(0.085, ul, seg=12), ua, (0, ul * 0.5, 0), rot=(90, 0, 0)), 'black', ua))
+        parts.append(Part(rig.L(rbox(0.20, ul * 0.70, 0.21, bev=0.07, seg=3), ua, (0, ul * 0.58, 0.0)), A, ua))
+        parts.append(Part(rig.L(sphere(0.085, 12, 8), fa, (0, 0, -0.01)), 'black', blend(rig, [ua, fa], 0.05)))
+        for k in range(3):
+            parts.append(Part(rig.L(torus(0.082, 0.011, seg=16, seg2=5), fa, (0, -0.03 + k * 0.03, -0.005), rot=(90, 0, 0)), 'gunmetal', blend(rig, [ua, fa], 0.05)))
+        parts.append(Part(rig.L(rbox(0.13, 0.12, 0.10, bev=0.035, seg=2), fa, (0, 0.03, -0.08), rot=(-20, 0, 0)), A, fa))
+        parts.append(Part(rig.L(rbox(0.19, fl * 0.82, 0.19, bev=0.06, seg=3, taper_y=(0.86, 0.86)), fa, (0, fl * 0.55, 0.0)), A, fa))
+        parts.append(Part(rig.L(rbox(0.205, 0.05, 0.205, bev=0.02), fa, (0, fl * 0.90, 0.0)), 'black', fa))
+        parts.append(Part(rig.L(torus(0.08, 0.015, seg=16, seg2=5), fa, (0, fl * 0.97, 0), rot=(90, 0, 0)), 'trim', fa))
+        parts += fist(rig, side, scale=1.65, mat=A, glove='black')
+    # ---------------- head: Mk VII helmet sunk into the gorget
+    hz = b.head_z + 0.145
+    parts.append(P(cyl(0.095, 0.12, seg=12), 'black', 'neck', (0, -0.015, b.neck_z + 0.04)))
+    dome = ellipsoid(0.132, 0.150, 0.146, 24, 16)
+    parts.append(P(dome, A, 'head', (0, -0.005, hz)))
+    parts.append(P(torus(0.148, 0.011, seg=24, seg2=5, arc=160), A, 'head', (0, -0.005, hz), rot=(0, 90, 0), scale=(1, 1.01, 1)))
+    parts.append(P(rbox(0.205, 0.10, 0.13, bev=0.035, seg=3, taper=(0.92, 1.0)), A, 'head', (0, -0.098, hz - 0.045)))
+    parts.append(P(rbox(0.215, 0.05, 0.034, bev=0.014), A, 'head', (0, -0.142, hz + 0.028), rot=(-12, 0, 0)))
+    parts += P2(rbox(0.06, 0.13, 0.085, bev=0.02, seg=2), A, 'head', (0.085, -0.115, hz - 0.098), rot=(0, 0, -24))
+    parts.append(P(rbox(0.095, 0.085, 0.09, bev=0.022, seg=2, taper=(0.72, 0.82)), 'gunmetal', 'head', (0, -0.172, hz - 0.11), rot=(12, 0, 0)))
+    parts.append(P(array(rbox(0.006, 0.02, 0.06), 5, (0.016, 0, 0)), 'black', 'head', (-0.032, -0.218, hz - 0.11), rot=(12, 0, 0)))
     for sx in (1, -1):
-        parts.append(P(rbox(0.068, 0.03, 0.042, bev=0.012), 'black', 'head', (sx * 0.05, -0.16, 1.93), rot=(0, 0, -sx * 12)))
-        parts.append(P(ellipsoid(0.036, 0.017, 0.023, 12, 8), 'lens', 'head', (sx * 0.05, -0.177, 1.93), rot=(0, 0, -sx * 12)))
-        parts.append(P(cyl(0.05, 0.06, seg=16, bev=0.008), A, 'head', (sx * 0.135, -0.02, 1.905), rot=(0, 90, 0)))
-        parts.append(P(cyl(0.03, 0.066, seg=12), 'gunmetal', 'head', (sx * 0.138, -0.02, 1.905), rot=(0, 90, 0)))
+        parts.append(P(rbox(0.066, 0.025, 0.038, bev=0.01), 'black', 'head', (sx * 0.048, -0.152, hz - 0.005), rot=(0, 0, -sx * 10)))
+        parts.append(P(ellipsoid(0.029, 0.012, 0.018, 12, 8), 'lens', 'head', (sx * 0.048, -0.164, hz - 0.005), rot=(0, 0, -sx * 10)))
+        parts.append(P(cyl(0.038, 0.035, seg=14, bev=0.006), 'gunmetal', 'head', (sx * 0.128, -0.04, hz - 0.06), rot=(0, 90, 0)))
+        parts.append(P(cyl(0.024, 0.04, seg=12), 'black', 'head', (sx * 0.131, -0.04, hz - 0.06), rot=(0, 90, 0)))
     # ---------------- honours and seals
     parts += purity_seal(rig, 'chest', (0.18, -0.255, 1.45))
-    parts += purity_seal(rig, 'pauldron.R', (-0.44, -0.24, 1.60), rot=(0, 0, -20))
+    parts += purity_seal(rig, 'pauldron.R', (-0.42, -0.30, 1.52), rot=(0, 0, -20))
     parts += purity_seal(rig, 'thigh.L', (0.19, -0.16, 0.90), rot=(0, 0, 10), s=0.9)
     # ---------------- kind specifics
     if kind == 'sergeant':
-        parts.append(P(torus(0.14, 0.013, seg=24, seg2=5, arc=200), 'trim', 'head', (0, 0.0, 1.98), rot=(0, 0, 170), scale=(1, 1.12, 1)))
-        parts.append(P(rbox(0.055, 0.32, 0.013, bev=0.004), 'white', 'head', (0, -0.01, 2.08), rot=(8, 0, 0)))
+        parts.append(P(torus(0.14, 0.013, seg=24, seg2=5, arc=200), 'trim', 'head', (0, 0.0, 1.95), rot=(0, 0, 170), scale=(1, 1.12, 1)))
+        parts.append(P(rbox(0.055, 0.32, 0.013, bev=0.004), 'white', 'head', (0, -0.01, 2.05), rot=(8, 0, 0)))
         parts.append(P(rbox(0.12, 0.005, 0.26, bev=0.003), 'red', 'chest', (0.0, 0.445, 1.36)))
         parts += chainsword(rig, 'weapon', 1.15)
         parts += bolt_pistol(rig, 'offhand', 1.2)

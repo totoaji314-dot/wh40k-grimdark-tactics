@@ -103,3 +103,17 @@ button.btn.big { padding: 14px 22px; font-size: 1.1em; }
   .hint { bottom: 76px; font-size: 11px; }
   .toast { top: 44px; }
 }
+
+/* pre-battle deployment banner */
+.deploy { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 10px 14px; max-width: min(94vw, 900px); }
+.deploy .dt { font-family: Georgia, 'Noto Serif KR', serif; font-size: 20px; color: var(--brass); letter-spacing: 0.08em; white-space: nowrap; }
+.deploy .dd { font-size: 13px; color: var(--parch); line-height: 1.4; }
+.deploy .dd b { color: #fff; }
+.deploy button.go { font-size: 16px; padding: 8px 18px; white-space: nowrap; background: linear-gradient(#7a5a18, #4a3408); border-color: var(--brass); color: #fff4d0; }
+.deploy button.go small { display: block; font-size: 10px; opacity: 0.7; }
+@media (max-height: 520px), (max-width: 760px) {
+  .deploy { top: 46px; padding: 5px 8px; gap: 8px; }
+  .deploy .dt { font-size: 14px; }
+  .deploy .dd { font-size: 10.5px; }
+  .deploy button.go { font-size: 13px; padding: 4px 10px; min-height: 32px; }
+}

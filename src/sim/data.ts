@@ -133,19 +133,19 @@ export const SCENARIOS: Scenario[] = [
     id: 'marines_vs_orks', ko: '불굴의 30인', desc: '스페이스 마린 30명이 오크 100마리의 와아아그를 막아낸다. (기본 검증 전투 30 대 100)',
     player: ['marines'], enemy: ['orks'], map: 'ruins',
     side0: [{ unit: 'tactical', x: -22, z: 70 }, { unit: 'devastator', x: 0, z: 82 }, { unit: 'tactical', x: 22, z: 70 }],
-    side1: [{ unit: 'boyz', x: -30, z: -95 }, { unit: 'shootas', x: 25, z: -100 }, { unit: 'nobz', x: 0, z: -115 }, { unit: 'boyz_small', x: 55, z: -90 }],
+    side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
     id: 'cadia_line', ko: '카디아의 방어선', desc: '아스트라 밀리타룸 100명이 폐허 지구에서 오크 100마리를 상대한다.',
     player: ['guard'], enemy: ['orks'], map: 'ruins',
     side0: [{ unit: 'infantry', x: -40, z: 70 }, { unit: 'heavy_platoon', x: 0, z: 78 }, { unit: 'infantry', x: 40, z: 70 }, { unit: 'command', x: 0, z: 100 }],
-    side1: [{ unit: 'boyz', x: -30, z: -95 }, { unit: 'shootas', x: 25, z: -100 }, { unit: 'nobz', x: 0, z: -115 }, { unit: 'boyz_small', x: 55, z: -90 }],
+    side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
     id: 'krieg_trench', ko: '크리그의 참호', desc: '데스 코어 오브 크리그 100명이 참호선을 지킨다. 오크 100마리가 몰려온다.',
     player: ['krieg'], enemy: ['orks'], map: 'trenches',
     side0: [{ unit: 'krieg_line', x: -38, z: 57 }, { unit: 'krieg_heavy_co', x: 0, z: 57 }, { unit: 'krieg_line', x: 38, z: 57 }, { unit: 'krieg_line', x: 0, z: 89 }],
-    side1: [{ unit: 'boyz', x: -30, z: -95 }, { unit: 'shootas', x: 25, z: -100 }, { unit: 'nobz', x: 0, z: -115 }, { unit: 'boyz_small', x: 55, z: -90 }],
+    side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
     id: 'grand_waaagh', ko: '대 와아아그', desc: '제국 연합군(마린 30 · 카디안 100 · 크리그 100)과 오크 대군 300의 대규모 전투.',
