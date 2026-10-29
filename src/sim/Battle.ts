@@ -116,7 +116,7 @@ const knocked = new WeakMap<Soldier, number>(); // value: battle time when the s
 /** soldiers whose current swing is a power attack (melee_c) */
 const heavyStrike = new WeakSet<Soldier>();
 /** reaction / one-shot clips that must finish before locomotion takes over again */
-const REACTIONS = ['hit', 'stagger', 'block', 'knockdown', 'getup'];
+const REACTIONS = ['hit', 'stagger', 'block', 'knockdown', 'getup', 'land'];
 function setReload(s: Soldier, delay: number) { reloadAt.set(s, delay); }
 /** Global melee damage scale: Total War-style melee grinds on for tens of seconds instead of resolving instantly. */
 export const MELEE_SCALE = 0.5;
@@ -934,7 +934,12 @@ export class Battle {
     const tpl = UNITS[tplId];
     const n = this.units.filter((u) => u.tpl.id === tplId && u.side === side).length + 1;
     const u = this.spawnUnit(tpl, side, x, z, yaw, `${tpl.ko} ${n} (강하)`);
-    for (const s of u.soldiers) { s.anim = newAnim('aim', this.rnd()); }
+    for (const s of u.soldiers) {
+      s.anim = newAnim('aim', this.rnd());
+      // models that ship a landing clip (the local Space Marine 1 set) hit the ground in a three-point landing first
+      const land = this.clips[s.def.id]?.land;
+      if (land) { play(s.anim, 'land', 0.9 + this.rnd() * 0.2, 0, true); s.hitT = land.dur * 0.9; }
+    }
     this.events.push({ type: 'reinforce', u });
     return u;
   }
@@ -998,7 +1003,7 @@ export class Battle {
   private pickAnim(s: Soldier, spd: number, mode: string) {
     const a = s.anim;
     if (s.hitT > 0 && REACTIONS.includes(a.clip)) return;
-    const oneShot = ['fire', 'cover_fire', 'reload', 'command', 'melee_a', 'melee_b', 'melee_c', ...REACTIONS];
+    const oneShot = ['fire', 'cover_fire', 'reload', 'command', 'melee_a', 'melee_b', 'melee_c', 'land', ...REACTIONS];
     if (oneShot.includes(a.clip)) {
       const c = this.clip(s, a.clip);
       if (a.t < c.dur * 0.92 && !(spd > 1.2 && a.clip !== 'command')) return;
