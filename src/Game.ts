@@ -907,7 +907,7 @@ export class Game {
       ur.lodDist = [1000, 2000];
       scene.add(ur.group);
       const h = asset.height * pick.def.scale;
-      const fig: Figure = { variant: id, x: 0, y: 0, z: 0, yaw: 0.45, scale: pick.def.scale, tint: 1, anim: { clip: 'aim', t: 0.4, rate: 1, prev: null, pt: 0, prate: 1, blend: 0, fade: 0 }, visible: true };
+      const fig: Figure = { variant: id, x: 0, y: 0, z: 0, yaw: 0.45, scale: pick.def.scale, tint: 1, anim: { clip: 'aim', t: 0.4, rate: 1, prev: null, pt: 0, prate: 1, blend: 0, fade: 0, up: null, ut: 0, urate: 1, udur: 0, uw: 0 }, visible: true };
       cam.position.set(0.55, h * 0.78, 2.1 + h * 0.15);
       cam.lookAt(0, h * 0.72, 0);
       cam.updateMatrixWorld();

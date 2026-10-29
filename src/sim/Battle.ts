@@ -2,7 +2,7 @@ import { BattleMap, PLAY } from '../world/MapGen';
 import { mulberry32 } from '../world/noise';
 import { Nav } from './Nav';
 import { WEAPONS, SOLDIERS, UNITS, ABILITIES, FACTIONS, type Scenario, type SoldierDef, type UnitTemplate, type WeaponDef, type FormationId, type FactionId, type AbilityId } from './data';
-import { newAnim, play, type Anim, type ClipTable, type ClipMeta } from './anim';
+import { newAnim, play, playUpper, type Anim, type ClipTable, type ClipMeta } from './anim';
 
 // ============================================================================ types
 export type SState = 'idle' | 'move' | 'melee' | 'hit' | 'dead';
@@ -208,7 +208,9 @@ export class Battle {
   order(u: Unit, o: Order) {
     if (u.mstate === 'routing' || u.mstate === 'gone' || u.mstate === 'shattered') return;
     const L = u.leader;
-    if (L && L.alive && !L.foe && o.type !== 'idle' && (u.order.type !== o.type || u.order.target !== o.target)) play(L.anim, 'command', 1.15, 0.15, true);
+    if (L && L.alive && !L.foe && o.type !== 'idle' && (u.order.type !== o.type || u.order.target !== o.target)) {
+      if (Math.hypot(L.vx, L.vz) > 0.6) playUpper(L.anim, 'command', this.clip(L, 'command').dur / 1.15, 1.15); else play(L.anim, 'command', 1.15, 0.15, true);
+    }
     u.order = o;
     u.charging = false;
     if (o.files !== undefined && o.files !== u.files) { u.files = o.files; this.layout(u, false); }
@@ -515,7 +517,13 @@ export class Battle {
     const rl = reloadAt.get(s);
     if (rl !== undefined) {
       const left = rl - dt;
-      if (left <= 0) { reloadAt.delete(s); if (!s.foe && s.hitT <= 0) play(s.anim, 'reload', 1, 0.12, true); } else reloadAt.set(s, left);
+      if (left <= 0) {
+        reloadAt.delete(s);
+        if (!s.foe && s.hitT <= 0) {
+          if (Math.hypot(s.vx, s.vz) > 0.6) playUpper(s.anim, 'reload', this.clip(s, 'reload').dur);   // reload on the move
+          else play(s.anim, 'reload', 1, 0.12, true);
+        }
+      } else reloadAt.set(s, left);
     }
     s.pathT -= dt;
 
@@ -807,7 +815,10 @@ export class Battle {
     this.events.push({ type: 'shot', s, w, pistol, tx, ty, tz, dur });
     s.firingT = 1.2;
     const clip = s.crouch ? 'cover_fire' : 'fire';
-    if (!s.anim.clip.startsWith('melee') && s.hitT <= 0 && !(moving)) play(s.anim, clip, 1, 0.05, true);
+    if (s.anim.clip.startsWith('melee') || s.hitT > 0) return;
+    // moving: legs keep walking, the upper body fires (recoil and all) on the animation layer
+    if (moving) playUpper(s.anim, 'fire', this.clip(s, 'fire').dur + 0.25);
+    else play(s.anim, clip, 1, 0.05, true);
   }
 
   private updateShots() {
