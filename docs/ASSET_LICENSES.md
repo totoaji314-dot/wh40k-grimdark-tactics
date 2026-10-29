@@ -13,7 +13,7 @@
 | 자료 | 위치 | 이유 |
 |---|---|---|
 | Warhammer 40,000: Space Marine (2011) 데모 추출 모델·텍스처·Havok | `D:\01_BoltgunReference\SpaceMarine1_Extracted` (저장소 밖) | 공식 게임 에셋, 재배포 허가 없음. 로컬 기술 분석 전용 |
-| 위 자료의 변환 결과(PNG, GLB, .blend, 렌더) | 같은 폴더 `_analysis/` | 같은 이유 |
+| 위 자료의 변환 결과(PNG, GLB, .blend, 렌더, 게임용 GLB·아틀라스) | 같은 폴더 `_analysis/`, `_game_build/`, `_game_assets/` | 같은 이유. 게임은 개발 서버(`npm run dev`)의 `/local-assets/` 경로로만 읽으며, 이 경로는 `vite build`와 GitHub Pages에 없다 |
 | `Rifleman.glb` | 작업 폴더 | CC0이지만 2등신 카툰 스타일이라 사용하지 않음 |
 
 ## IP 위험 (숨기지 않고 기록)

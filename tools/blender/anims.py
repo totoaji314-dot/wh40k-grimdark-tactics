@@ -376,4 +376,115 @@ def build_clips(body, st, cls, prefix):
         return p
     add('command', 48, command, loop=False)
 
+    # ---------------- block / parry: weapon thrown across the body, weight rocks back onto the rear foot
+    def block(t, f):
+        p = Pose(); stand(p, body, st, drop=st.knee + 0.07, spread=0.06, front=0.18); posture(p, st, -4)
+        k = bump(t, 0.0, 0.3, 1.0); jolt = bump(t, 0.22, 0.32, 0.55)
+        p.l('hips', 0, 0.07 * k + 0.04 * jolt, -0.02 * k)
+        p.l('ik_foot.R', 0, 0.10 * env(t, 0.0, 0.25), 0.04 * bump(t, 0.0, 0.12, 0.25))
+        if cls == 'onehand':
+            p.l('weapon', 0.04, 0.02, 0.30 * k).r('weapon', rx=-85 * k, rz=55 * k)
+            p.l('offhand', 0.05, 0.1, -0.2).r('offhand', rx=50)
+        elif cls == 'twohand':
+            p.l('weapon', 0.0, 0.0, 0.28 * k).r('weapon', rx=-60 * k, ry=70 * k)
+        else:  # rifle / heavy held crosswise like a quarterstaff
+            p.l('weapon', 0.06 * k, 0.04 * k, 0.16 * k).r('weapon', rx=-15 * k, rz=62 * k)
+        p.r('chest', rx=-8 * k - 4 * jolt, rz=6 * jolt); p.r('head', rx=-6 * k)
+        return p
+    add('block', 18, block, loop=False)
+
+    # ---------------- stagger: heavy blow drives the soldier back two steps
+    def stagger(t, f):
+        p = aim(0, 0) if cls != 'twohand' else idle(0, 0)
+        k = bump(t, 0.0, 0.25, 1.0)
+        s1 = bump(t, 0.05, 0.25, 0.45); s2 = bump(t, 0.3, 0.5, 0.7)
+        p.l('hips', 0.03 * math.sin(t * 9), 0.22 * k, -0.08 * k)
+        p.r('hips', rx=-10 * k, rz=10 * k); p.r('chest', rx=-18 * k, rz=-12 * k); p.r('head', rx=-22 * k, rz=14 * k)
+        p.l('ik_foot.R', 0, 0.24 * env(t, 0.05, 0.4), 0.10 * s1)
+        p.l('ik_foot.L', 0, 0.20 * env(t, 0.3, 0.7), 0.08 * s2)
+        p.l('weapon', 0.04 * k, 0.08 * k, -0.10 * k).r('weapon', rx=24 * k, rz=18 * k)
+        return p
+    add('stagger', 24, stagger, loop=False)
+
+    # ---------------- knockdown (blast / mass charge) and getting back up
+    def knock_pose(p, k1, k2):
+        hh = body.hip_h
+        p.l('hips', 0, 0.35 * k1 + 0.35 * k2, -(hh * 0.4) * k1 - (hh * 0.45) * k2)
+        p.r('hips', rx=-25 * k1 - 55 * k2)
+        p.r('chest', rx=-10 * k2); p.r('head', rx=-20 * k1 + 25 * k2)
+        p.l('ik_foot.L', 0.06 * k2, -0.05 * k2, 0.12 * k1).r('ik_foot.L', rx=-25 * k2, rz=-15 * k2)
+        p.l('ik_foot.R', -0.08 * k2, -0.18 * k2, 0.18 * k1).r('ik_foot.R', rx=-35 * k2, rz=20 * k2)
+        p.l('weapon', 0.12 * k2, 0.10 * k1, -0.10 * k2).r('weapon', rx=35 * k1 + 30 * k2, rz=25 * k2)
+        p.l('offhand', 0.0, 0.1 * k1, -0.15 * k2).r('offhand', rx=60 * k2)
+
+    def knockdown(t, f):
+        p = Pose(); posture(p, st)
+        knock_pose(p, env(t, 0.0, 0.3), env(t, 0.2, 0.7) * (1 - 0.06 * bump(t, 0.7, 0.78, 0.9)))
+        return p
+    add('knockdown', 32, knockdown, loop=False)
+
+    def getup(t, f):
+        p = Pose(); posture(p, st, 10 * bump(t, 0.3, 0.6, 1.0))
+        down = 1 - env(t, 0.0, 0.45)                    # roll off the back
+        kneeling = bump(t, 0.25, 0.55, 0.95)            # push up onto one knee
+        knock_pose(p, down, down)
+        if kneeling > 0:
+            hh = body.hip_h
+            p.l('hips', 0, 0.12 * kneeling, -hh * 0.38 * kneeling)
+            p.l('ik_foot.L', st.stance + 0.03, -0.20 * kneeling, 0).r('ik_foot.L', rz=-10)
+            p.l('ik_foot.R', -st.stance - 0.04, 0.38 * kneeling, 0.02 * kneeling).r('ik_foot.R', rx=50 * kneeling)
+            p.l('ik_hand.L', 0.05 * kneeling, -0.1 * kneeling, -0.35 * kneeling)   # hand on the knee
+        stand_k = env(t, 0.75, 1.0)
+        if stand_k > 0:
+            q = Pose(); stand(q, body, st); posture(q, st); w_rest(q, cls)
+            for b, e in q.items():
+                for key, val in e.items():
+                    cur = p.setdefault(b, {}).get(key, (0, 0, 0))
+                    p[b][key] = tuple(c + (v - c) * stand_k for c, v in zip(cur, val))
+        return p
+    add('getup', 40, getup, loop=False)
+
+    # ---------------- death C: spun round by the hit and falls on the side
+    def death_c(t, f):
+        p = Pose(); posture(p, st)
+        k1 = env(t, 0.0, 0.35); k2 = env(t, 0.3, 0.85)
+        hh = body.hip_h
+        p.l('hips', 0.30 * k2, 0.05 * k1, -(hh * 0.38) * k1 - (hh * 0.48) * k2)
+        p.r('hips', rz=-40 * k1 - 30 * k2, ry=75 * k2, rx=10 * k1)
+        p.r('chest', rz=-15 * k1, ry=10 * k2); p.r('head', ry=25 * k2, rx=-15 * k1)
+        p.l('ik_foot.L', 0.10 * k2, 0.05 * k2, 0.10 * k2).r('ik_foot.L', ry=60 * k2)
+        p.l('ik_foot.R', 0.25 * k2, -0.10 * k2, 0.30 * k2).r('ik_foot.R', ry=70 * k2, rx=-20 * k2)
+        p.l('weapon', 0.15 * k2, 0.05 * k1, -0.2 * k2).r('weapon', rx=45 * k1, rz=40 * k2)
+        p.l('offhand', 0.1 * k2, 0.05, -0.2 * k2).r('offhand', rx=70 * k2)
+        return p
+    add('death_c', 44, death_c, loop=False)
+
+    # ---------------- melee C: committed power attack (long wind-up, step in, crushing blow)
+    def melee_c(t, f):
+        p = Pose(); stand(p, body, st, drop=st.knee + 0.08, spread=0.08, front=0.24); posture(p, st, 6)
+        wind = bump(t, 0.0, 0.45, 0.62); strike = env(t, 0.45, 0.62) * (1 - env(t, 0.82, 1.0))
+        step = env(t, 0.38, 0.6)
+        p.l('ik_foot.L', 0, -0.22 * step, 0.08 * bump(t, 0.38, 0.48, 0.6)); p.l('hips', 0, -0.16 * step + 0.06 * wind, -0.06 * strike)
+        p.r('chest', rz=-30 * wind + 22 * strike, rx=-14 * wind + 26 * strike); p.r('hips', rz=-12 * wind + 10 * strike)
+        if cls == 'onehand':
+            p.l('weapon', 0.06, 0.20 * wind - 0.16 * strike, 0.45 * wind - 0.18 * strike).r('weapon', rx=-135 * wind + 75 * strike, rz=-30 * wind + 20 * strike)
+            p.l('offhand', 0.05, 0.1, -0.2).r('offhand', rx=50)
+        elif cls in ('rifle', 'heavy'):
+            p.l('weapon', 0.04, 0.16 * wind - 0.30 * strike, 0.30 * wind - 0.05 * strike).r('weapon', rx=-70 * wind + 40 * strike, rz=25 * strike)
+        else:
+            p.l('weapon', 0.0, 0.16 * wind - 0.12 * strike, 0.5 * wind - 0.3 * strike).r('weapon', rx=-150 * wind + 110 * strike)
+        return p
+    add('melee_c', 34, melee_c, loop=False, event=0.56)
+
+    # ---------------- sprint (rout / desperate dash): long low strides, arms pumping, weapon clutched
+    sp = dict(st.charge); sp['lean'] = st.charge['lean'] + 6
+    def sprint(t, f):
+        p = Pose(); gait(p, body, st, sp, t, extra_drop=0.1); posture(p, st, sp['lean'])
+        w_port(p, cls, 1.1)
+        p.l('ik_hand.L', 0, 0.06 * math.sin(t * TAU), 0.04 * math.cos(t * TAU))
+        p.r('head', rx=-10)
+        return p
+    S5 = leg_reach(body, sp['S'], st.knee + 0.1 + sp['bob'])
+    add('sprint', sp['frames'], sprint, speed=S5 / (sp['duty'] * sp['frames'] / 30))
+
     return C

@@ -80,3 +80,28 @@ describe('group melee', () => {
     expect(overCap / samples).toBeLessThan(0.05);
   }, 120000);
 });
+
+describe('reaction animations', () => {
+  it('battles use block, stagger, power attack, side death and knockdown->getup, and nobody stays down', () => {
+    const used = new Set<string>();
+    let stuckDown = 0;
+    for (const id of ['marines_vs_orks', 'grand_waaagh']) {
+      const map = new BattleMap(sc(id).map, foot);
+      const b = new Battle(map, sc(id), clips, 11);
+      const ai = [new Commander(b, 0), new Commander(b, 1)];
+      const downSince = new Map<Soldier, number>();
+      while (!b.over && b.time < 300) {
+        ai[0].update(1 / 20); ai[1].update(1 / 20); b.update(1 / 20); b.events.length = 0;
+        for (const s of b.soldiers) {
+          used.add(s.anim.clip);
+          if (s.alive && s.anim.clip === 'knockdown') { if (!downSince.has(s)) downSince.set(s, b.time); else if (b.time - downSince.get(s)! > 5) stuckDown++; }
+          else downSince.delete(s);
+        }
+      }
+    }
+    console.log('reaction clips used:', ['block', 'stagger', 'melee_c', 'death_c', 'knockdown', 'getup', 'sprint'].filter((c) => used.has(c)).join(' '));
+    for (const c of ['block', 'stagger', 'melee_c', 'death_c']) expect(used.has(c), c).toBe(true);
+    if (used.has('knockdown')) expect(used.has('getup')).toBe(true);
+    expect(stuckDown).toBe(0);
+  }, 240000);
+});

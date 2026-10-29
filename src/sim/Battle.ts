@@ -105,6 +105,12 @@ const SPATIAL = 3; // spatial hash cell (m)
 /** Bursts per magazine before a reload animation. */
 const MAG_BURSTS: Record<string, number> = { bolter: 6, heavy_bolter: 4, plasma: 5, lasgun: 10, heavy_stubber: 4, shoota: 5, slugga: 6, bolt_pistol: 7, laspistol: 10, kombi: 5 };
 const reloadAt = new WeakMap<Soldier, number>();
+/** soldiers lying on the ground after a knockdown (they play 'getup' when the fall finishes) */
+const knocked = new WeakMap<Soldier, number>(); // value: battle time when the soldier hits the ground
+/** soldiers whose current swing is a power attack (melee_c) */
+const heavyStrike = new WeakSet<Soldier>();
+/** reaction / one-shot clips that must finish before locomotion takes over again */
+const REACTIONS = ['hit', 'stagger', 'block', 'knockdown', 'getup'];
 function setReload(s: Soldier, delay: number) { reloadAt.set(s, delay); }
 /** Global melee damage scale: Total War-style melee grinds on for tens of seconds instead of resolving instantly. */
 export const MELEE_SCALE = 0.5;
@@ -513,6 +519,13 @@ export class Battle {
     }
     s.pathT -= dt;
 
+    // simulation clock, not the animation clock: headless battles never advance animations
+    if (knocked.has(s) && this.time >= knocked.get(s)!) {
+      knocked.delete(s);
+      play(s.anim, 'getup', 1, 0.05, true);
+    }
+    if (knocked.has(s) || (s.hitT > 0 && s.anim.clip === 'getup')) { s.vx = 0; s.vz = 0; s.foe = null; return; }
+
     // ---------- melee
     if (s.foe && (!s.foe.alive || dist(s, s.foe) > s.def.melee.reach + 1.4)) s.foe = null;
     if (!s.foe && u.mstate !== 'routing') {
@@ -558,7 +571,10 @@ export class Battle {
       this.moveToward(s, s.x + (f.x - s.x) / Math.max(d, 0.01) * k * 0.5, s.z + (f.z - s.z) / Math.max(d, 0.01) * k * 0.5, Math.min(2.5, Math.abs(k)), dt, true);
       s.meleeT -= dt;
       if (s.meleeT <= 0 && s.hitT <= 0 && s.strikeT < 0) {
-        const clip = this.rnd() < 0.5 ? 'melee_a' : 'melee_b';
+        const heavyChance = s.def.role === 'boss' || s.def.role === 'leader' || s.def.role === 'officer' ? 0.3 : s.def.melee.mass >= 2.5 ? 0.12 : 0.04;
+        const power = this.rnd() < heavyChance;
+        const clip = power ? 'melee_c' : this.rnd() < 0.5 ? 'melee_a' : 'melee_b';
+        if (power) heavyStrike.add(s); else heavyStrike.delete(s);
         const m = this.clip(s, clip);
         play(s.anim, clip, 1.0, 0.1, true);
         s.strikeT = m.dur * m.event;
@@ -566,7 +582,7 @@ export class Battle {
         s.meleeT = (1 / s.def.melee.rate) * (0.85 + this.rnd() * 0.3);
       }
       if (s.strikeT < 0 && s.hitT <= 0 && s.anim.t > this.clip(s, s.anim.clip).dur * 0.95 && !s.anim.clip.startsWith('melee')) play(s.anim, 'aim', 1, 0.2);
-      if (s.strikeT < 0 && s.anim.clip.startsWith('melee') && s.anim.t >= this.clip(s, s.anim.clip).dur) play(s.anim, 'aim', 1, 0.2);
+      if (s.strikeT < 0 && (s.anim.clip.startsWith('melee') || s.anim.clip === 'block') && s.anim.t >= this.clip(s, s.anim.clip).dur) play(s.anim, 'aim', 1, 0.2);
       return;
     }
     if (s.state === 'melee') s.state = 'idle';
@@ -821,7 +837,10 @@ export class Battle {
     const save = Math.max(0, Math.min(0.95, o.def.armor - ap));
     o.hp -= dmg * (1 - save);
     if (o.hp <= 0) this.kill(o, by);
-    else if (dmg * (1 - save) > o.maxHp * 0.18 && o.hitT <= 0 && this.rnd() < 0.6) {
+    else if (dmg * (1 - save) > o.maxHp * 0.35 && o.hitT <= 0 && !knocked.has(o)) {
+      o.hitT = 0.75;
+      play(o.anim, 'stagger', 1, 0.06, true);
+    } else if (dmg * (1 - save) > o.maxHp * 0.18 && o.hitT <= 0 && !knocked.has(o) && this.rnd() < 0.6) {
       o.hitT = 0.45;
       if (!o.anim.clip.startsWith('death')) play(o.anim, 'hit', 1, 0.08, true);
     }
@@ -830,7 +849,13 @@ export class Battle {
   private kill(o: Soldier, by: Soldier | null) {
     o.alive = false; o.hp = 0; o.state = 'dead'; o.deadT = 0; o.foe = null; o.target = null;
     o.vx = o.vz = 0;
-    play(o.anim, this.rnd() < 0.5 ? 'death_a' : 'death_b', 0.9 + this.rnd() * 0.2, 0.1);
+    let death = this.rnd() < 0.5 ? 'death_a' : 'death_b';
+    if (by) {
+      const ang = Math.abs(angDiff(o.yaw, Math.atan2(by.x - o.x, by.z - o.z)));
+      death = ang < 0.9 ? 'death_a' : ang > 2.2 ? 'death_b' : 'death_c';
+    }
+    knocked.delete(o);
+    play(o.anim, death, 0.9 + this.rnd() * 0.2, 0.1);
     const u = o.unit;
     u.losses++; u.lossLog.push(this.time);
     if (o === u.leader) { u.leader = null; u.morale -= 12; }
@@ -849,8 +874,15 @@ export class Battle {
       const push = Math.min(1.6, (ms / mo) * 0.5);
       const px = o.x + nx * push, pz = o.z + nz * push;
       if (!this.map.isBlocked(px, pz)) { o.x = px; o.z = pz; }
-      o.hitT = 0.7;
-      if (o.alive) play(o.anim, 'hit', 1, 0.05, true);
+      if (ms > mo * 2 && this.rnd() < 0.45 && o.alive) {
+        knocked.set(o, this.time + this.clip(o, 'knockdown').dur);
+        o.hitT = this.clip(o, 'knockdown').dur + this.clip(o, 'getup').dur;
+        o.foe = null; o.strikeT = -1; o.strikeFoe = null;
+        play(o.anim, 'knockdown', 1, 0.04, true);
+      } else {
+        o.hitT = 0.7;
+        if (o.alive) play(o.anim, 'stagger', 1, 0.05, true);
+      }
       this.damage(o, s.def.melee.dmg * 0.35, s.def.melee.ap, s);
     }
     o.unit.morale -= 0.6;
@@ -875,6 +907,11 @@ export class Battle {
     if (this.map.inTrench(f.x, f.z)) { if (!this.map.inTrench(s.x, s.z)) { def += 30; atk -= 15; } else def += 12; }
     const p = Math.max(0.08, Math.min(0.92, atk / (atk + Math.max(5, def))));
     const hit = this.rnd() < p;
+    if (heavyStrike.has(s)) { mult *= 1.35; heavyStrike.delete(s); }
+    if (!hit && f.foe === s && f.hitT <= 0 && f.strikeT < 0 && !knocked.has(f) && this.rnd() < 0.55) {
+      play(f.anim, 'block', 1, 0.06, true);
+      f.meleeT = Math.max(f.meleeT, 0.3);
+    }
     this.events.push({ type: 'melee', s, foe: f, hit });
     if (hit) {
       this.damage(f, s.def.melee.dmg * mult * MELEE_SCALE * (0.85 + this.rnd() * 0.3), s.def.melee.ap, s);
@@ -889,8 +926,8 @@ export class Battle {
 
   private pickAnim(s: Soldier, spd: number, mode: string) {
     const a = s.anim;
-    if (s.hitT > 0 && a.clip === 'hit') return;
-    const oneShot = ['fire', 'cover_fire', 'reload', 'command', 'hit', 'melee_a', 'melee_b'];
+    if (s.hitT > 0 && REACTIONS.includes(a.clip)) return;
+    const oneShot = ['fire', 'cover_fire', 'reload', 'command', 'melee_a', 'melee_b', 'melee_c', ...REACTIONS];
     if (oneShot.includes(a.clip)) {
       const c = this.clip(s, a.clip);
       if (a.t < c.dur * 0.92 && !(spd > 1.2 && a.clip !== 'command')) return;
@@ -899,7 +936,7 @@ export class Battle {
     s.crouch = false;
     if (spd > 0.35) {
       const charging = mode === 'charge' && u.charging;
-      const clip = charging ? 'charge' : spd > s.def.walk * 1.6 ? 'run' : (u.target && (s.def.weapon && WEAPONS[s.def.weapon].moveFire) ? 'walk_aim' : 'walk');
+      const clip = charging ? 'charge' : u.mstate === 'routing' && spd > s.def.walk * 1.6 ? 'sprint' : spd > s.def.walk * 1.6 ? 'run' : (u.target && (s.def.weapon && WEAPONS[s.def.weapon].moveFire) ? 'walk_aim' : 'walk');
       const c = this.clip(s, clip);
       const rate = Math.max(0.55, Math.min(1.9, spd / Math.max(0.3, c.speed * s.def.scale)));
       play(a, clip, rate, 0.22);
