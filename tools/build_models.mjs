@@ -11,12 +11,13 @@ import { MeshoptEncoder } from 'meshoptimizer';
 await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
 
-const src = path.resolve('local_only/models');
-const dst = path.resolve('public/assets/units');
+// MODELS_SRC / MODELS_DST let private builds (e.g. local-only reference assets) use the same pipeline without touching public/
+const src = path.resolve(process.env.MODELS_SRC ?? 'local_only/models');
+const dst = path.resolve(process.env.MODELS_DST ?? 'public/assets/units');
 fs.mkdirSync(dst, { recursive: true });
 const factions = process.argv.slice(2).length ? process.argv.slice(2) : fs.readdirSync(src).filter((d) => fs.existsSync(path.join(src, d, d + '.json')));
 for (const f of factions) {
-  const dir = path.join(src, f);
+  const dir = fs.existsSync(path.join(src, f + '.json')) ? src : path.join(src, f);
   const meta = JSON.parse(fs.readFileSync(path.join(dir, f + '.json'), 'utf8'));
   for (const v of Object.values(meta.variants)) {
     const doc = await io.read(path.join(dir, v.file));

@@ -7,6 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { BattleMap, PLAY, HALF, GN, CELL } from './world/MapGen';
 import { buildTerrain } from './world/Terrain';
 import { buildEnv, loadEnvFootprints } from './world/Env';
+import { localFactionOverrides } from './render/localAssets';
 import { buildScatter } from './world/Scatter';
 import { buildSky } from './render/Sky';
 import { UnitLibrary } from './render/UnitLibrary';
@@ -115,6 +116,8 @@ export class Game {
     const factions = new Set<FactionId>();
     for (const d of [...sc.side0, ...sc.side1]) factions.add(UNITS[d.unit].faction);
     this.lib = new UnitLibrary(BASE + 'assets/units/', this.renderer.capabilities.getMaxAnisotropy() > 4 ? 4 : 1);
+    this.lib.overrides = await localFactionOverrides();
+    if (this.lib.overrides.marines) console.info('[units] marines: local Space Marine (2011) reference models (dev server only)');
     let fi = 0;
     for (const f of factions) {
       await this.lib.loadFaction(f, P.halfUnitTex, (id) => progress(0.15 + (fi / factions.size) * 0.4, `${FACTIONS[f].ko} 모델: ${id}`));

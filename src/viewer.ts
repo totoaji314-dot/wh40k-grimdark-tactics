@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { UnitLibrary } from './render/UnitLibrary';
+import { localFactionOverrides } from './render/localAssets';
 import { UnitRenderer, newAnim, stepAnim, type Figure } from './render/UnitRenderer';
 
 export async function startViewer(canvas: HTMLCanvasElement) {
@@ -25,6 +26,7 @@ export async function startViewer(canvas: HTMLCanvasElement) {
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x4a4740, roughness: 0.95 }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const lib = new UnitLibrary(import.meta.env.BASE_URL + 'assets/units/');
+  lib.overrides = await localFactionOverrides();
   const q = new URLSearchParams(location.search);
   const factions = (q.get('f') ?? 'marines').split(',');
   for (const f of factions) await lib.loadFaction(f, false);

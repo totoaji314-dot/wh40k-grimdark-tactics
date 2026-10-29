@@ -48,15 +48,18 @@ export class UnitLibrary {
   variants = new Map<string, VariantAsset>();
   private loader = new GLTFLoader();
   private tex = new THREE.TextureLoader();
+  /** faction -> base URL, for factions loaded from somewhere else (local-only reference assets) */
+  overrides: Record<string, string> = {};
   constructor(private base: string, private maxAniso = 4) {
     this.loader.setMeshoptDecoder(MeshoptDecoder);
   }
 
   async loadFaction(faction: string, half: boolean, onProgress?: (msg: string) => void) {
-    const meta: FactionMeta = await (await fetch(`${this.base}${faction}.json`)).json();
+    const base = this.overrides[faction] ?? this.base;
+    const meta: FactionMeta = await (await fetch(`${base}${faction}.json`)).json();
     const suffix = half ? '_half' : '';
     const load = (k: string, srgb: boolean) => new Promise<THREE.Texture>((res, rej) => {
-      this.tex.load(`${this.base}${meta.textures[k]}${suffix}.webp`, (t) => {
+      this.tex.load(`${base}${meta.textures[k]}${suffix}.webp`, (t) => {
         t.flipY = false; // glTF UV convention
         t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
         t.anisotropy = this.maxAniso;
@@ -68,12 +71,15 @@ export class UnitLibrary {
     const [albedo, orm, normal, emissive] = await Promise.all([load('albedo', true), load('orm', false), load('normal', false), load('emissive', true)]);
     for (const [id, v] of Object.entries(meta.variants)) {
       onProgress?.(id);
-      const gltf = await this.loader.loadAsync(this.base + v.file);
+      const gltf = await this.loader.loadAsync(base + v.file);
       const asset = this.bake(id, faction, v, gltf);
       const mat = new THREE.MeshStandardMaterial({
         map: albedo, roughnessMap: orm, metalnessMap: orm, aoMap: orm, aoMapIntensity: 0.6, normalMap: normal,
         emissiveMap: emissive, emissive: new THREE.Color(1, 1, 1), emissiveIntensity: 1.6, roughness: 1, metalness: 0.6,
       });
+      // reference models authored for a different engine come with darker, dirt-baked diffuse maps: lift them at runtime
+      // (textures stay untouched) so they read under this game's dusk lighting
+      if (this.overrides[faction]) { mat.color.setScalar(1.35); mat.envMapIntensity = 1.6; }
       asset.material = skinMaterial(mat, asset.boneTex) as THREE.MeshStandardMaterial;
       asset.depthMaterial = skinMaterial(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), asset.boneTex, true) as THREE.MeshDepthMaterial;
       this.variants.set(id, asset);
