@@ -1,6 +1,6 @@
 // Procedural battle audio (WebAudio synthesis only, no sample files). Positional by distance / screen side.
 
-type Kind = 'las' | 'bolter' | 'hbolter' | 'stubber' | 'plasma' | 'slugga' | 'shoota' | 'explosion' | 'melee' | 'chainsword' | 'waaagh' | 'whistle' | 'click' | 'horn' | 'death';
+type Kind = 'las' | 'bolter' | 'hbolter' | 'stubber' | 'plasma' | 'slugga' | 'shoota' | 'explosion' | 'melee' | 'chainsword' | 'waaagh' | 'whistle' | 'click' | 'horn' | 'death' | 'jet' | 'pod';
 
 export class Audio {
   ctx: AudioContext | null = null;
@@ -53,7 +53,7 @@ export class Audio {
     if (!this.ctx || this.ctx.state !== 'running') return;
     const c = this.ctx, t = c.currentTime;
     // throttle identical sounds so 100 lasguns do not clip
-    const gap = { las: 0.03, bolter: 0.04, hbolter: 0.035, stubber: 0.03, plasma: 0.08, slugga: 0.04, shoota: 0.04, explosion: 0.08, melee: 0.05, chainsword: 0.12, waaagh: 1.5, whistle: 1, click: 0.02, horn: 2, death: 0.12 }[kind];
+    const gap = { las: 0.03, bolter: 0.04, hbolter: 0.035, stubber: 0.03, plasma: 0.08, slugga: 0.04, shoota: 0.04, explosion: 0.08, melee: 0.05, chainsword: 0.12, waaagh: 1.5, whistle: 1, click: 0.02, horn: 2, death: 0.12, jet: 1, pod: 1 }[kind];
     if (t - (this.last.get(kind) ?? -1) < gap) return;
     this.last.set(kind, t);
     let g = vol, pan = 0;
@@ -111,6 +111,8 @@ export class Audio {
       case 'whistle': for (let k = 0; k < 3; k++) { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = 2300 + (k % 2) * 180; const e = c.createGain(); const st = t + k * 0.18; e.gain.setValueAtTime(0.0001, st); e.gain.exponentialRampToValueAtTime(0.2, st + 0.02); e.gain.exponentialRampToValueAtTime(0.0001, st + 0.16); o.connect(e); e.connect(out); o.start(st); o.stop(st + 0.2); } break;
       case 'horn': osc('sawtooth', 110, 104, 1.6, 0.25, 0.15); osc('sawtooth', 165, 158, 1.6, 0.18, 0.15); break;
       case 'click': osc('square', 1200, 900, 0.04, 0.08); break;
+      case 'jet': nz('bandpass', 650, 0.45, 2.4, 0.9, 0.5); nz('lowpass', 260, 0.7, 2.6, 0.7, 0.6); osc('sawtooth', 230, 75, 2.3, 0.07, 0.4); break;
+      case 'pod': nz('highpass', 1800, 0.6, 2.2, 0.5, 1.6); osc('sawtooth', 900, 140, 2.3, 0.06, 1.8); break;
       case 'death': nz('lowpass', 700, 1, 0.25, 0.2); osc('sawtooth', 160, 80, 0.3, 0.06, 0.02); break;
     }
   }

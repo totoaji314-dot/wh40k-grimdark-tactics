@@ -125,31 +125,33 @@ export interface Scenario {
   enemy: FactionId[];
   side0: Deploy[]; side1: Deploy[];
   map: 'ruins' | 'trenches';
+  /** off-map support for the player's side: air strikes and drop-pod reinforcements (one tactical squad each) */
+  support?: { air?: number; pods?: number };
 }
 
 // side 0 deploys in the south (z > 0) facing north (-z, yaw = PI); side 1 in the north facing south (yaw = 0).
 export const SCENARIOS: Scenario[] = [
   {
     id: 'marines_vs_orks', ko: '불굴의 30인', desc: '스페이스 마린 30명이 오크 100마리의 와아아그를 막아낸다. (기본 검증 전투 30 대 100)',
-    player: ['marines'], enemy: ['orks'], map: 'ruins',
+    player: ['marines'], enemy: ['orks'], map: 'ruins', support: { air: 1, pods: 1 },
     side0: [{ unit: 'tactical', x: -22, z: 70 }, { unit: 'devastator', x: 0, z: 82 }, { unit: 'tactical', x: 22, z: 70 }],
     side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
     id: 'cadia_line', ko: '카디아의 방어선', desc: '아스트라 밀리타룸 100명이 폐허 지구에서 오크 100마리를 상대한다.',
-    player: ['guard'], enemy: ['orks'], map: 'ruins',
+    player: ['guard'], enemy: ['orks'], map: 'ruins', support: { air: 2 },
     side0: [{ unit: 'infantry', x: -40, z: 70 }, { unit: 'heavy_platoon', x: 0, z: 78 }, { unit: 'infantry', x: 40, z: 70 }, { unit: 'command', x: 0, z: 100 }],
     side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
     id: 'krieg_trench', ko: '크리그의 참호', desc: '데스 코어 오브 크리그 100명이 참호선을 지킨다. 오크 100마리가 몰려온다.',
-    player: ['krieg'], enemy: ['orks'], map: 'trenches',
+    player: ['krieg'], enemy: ['orks'], map: 'trenches', support: { air: 2 },
     side0: [{ unit: 'krieg_line', x: -38, z: 57 }, { unit: 'krieg_heavy_co', x: 0, z: 57 }, { unit: 'krieg_line', x: 38, z: 57 }, { unit: 'krieg_line', x: 0, z: 89 }],
     side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
     id: 'grand_waaagh', ko: '대 와아아그', desc: '제국 연합군(마린 30 · 카디안 100 · 크리그 100)과 오크 대군 300의 대규모 전투.',
-    player: ['marines', 'guard', 'krieg'], enemy: ['orks'], map: 'trenches',
+    player: ['marines', 'guard', 'krieg'], enemy: ['orks'], map: 'trenches', support: { air: 2, pods: 1 },
     side0: [
       { unit: 'krieg_line', x: -70, z: 57 }, { unit: 'krieg_heavy_co', x: -35, z: 57 }, { unit: 'krieg_line', x: -105, z: 57 }, { unit: 'krieg_line', x: -55, z: 89 },
       { unit: 'infantry', x: 30, z: 66 }, { unit: 'heavy_platoon', x: 62, z: 70 }, { unit: 'infantry', x: 95, z: 66 }, { unit: 'command', x: 62, z: 96 },
@@ -162,7 +164,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: 'orks_vs_imperium', ko: '와아아그를 이끌어라', desc: '오크 워보스가 되어 카디안 방어선을 짓밟아라.',
-    player: ['orks'], enemy: ['guard'], map: 'ruins',
+    player: ['orks'], enemy: ['guard'], map: 'ruins', support: { air: 1 },
     side0: [{ unit: 'boyz', x: -30, z: 95 }, { unit: 'shootas', x: 25, z: 100 }, { unit: 'nobz', x: 0, z: 115 }, { unit: 'boyz_small', x: 55, z: 90 }],
     side1: [{ unit: 'infantry', x: -40, z: -70 }, { unit: 'heavy_platoon', x: 0, z: -78 }, { unit: 'infantry', x: 40, z: -70 }, { unit: 'command', x: 0, z: -100 }],
   },

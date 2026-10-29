@@ -10,6 +10,10 @@ export interface HudActions {
   run(): void;
   charge(): void;
   fireAtWill(): void;
+  meleeMode(): void;
+  guard(): void;
+  skirmish(): void;
+  groupLock(): void;
   formation(f: FormationId): void;
   ability(): void;
   selectAll(): void;
@@ -61,6 +65,10 @@ export class Hud {
     o('run', '달리기', 'R', () => act.run(), '달리기 전환 (R)');
     o('charge', '돌격', 'C', () => act.charge(), '가장 가까운 적에게 돌격 (C)');
     o('fire', '자유사격', 'F', () => act.fireAtWill(), '자유 사격 전환 (F)');
+    o('melee', '근접전', 'M', () => act.meleeMode(), '근접전 모드: 사격하지 않고 백병전으로 싸움 (M)');
+    o('guard', '경계', 'V', () => act.guard(), '경계 모드: 자리를 지키며 추격하지 않음 (V)');
+    o('skirm', '견제', 'X', () => act.skirmish(), '견제 모드: 적이 달려들면 물러나며 사격 (X)');
+    o('lock', '그룹고정', 'L', () => act.groupLock(), '그룹 진형 고정: 여러 부대가 서로의 배치를 유지하며 이동 (L)');
     for (const [f, n] of FORMS) o('f_' + f, n, f === 'line' ? '1' : f === 'column' ? '2' : f === 'loose' ? '3' : '4', () => act.formation(f), `${n} 진형`);
     o('ability', '능력', 'G', () => act.ability(), '부대 특수 능력 (G)');
     o('all', '전체', 'Ctrl+A', () => act.selectAll(), '모든 부대 선택');
@@ -102,6 +110,35 @@ export class Hud {
   }
 
   multi = false;
+  groupLocked = false;
+  private supportEl: HTMLDivElement | null = null;
+
+  /** Off-map support buttons (air strike, drop pod) with remaining uses. */
+  showSupport(sup: { air: number; pods: number }, arm: (k: 'air' | 'pod') => void) {
+    if (sup.air <= 0 && sup.pods <= 0) return;
+    const d = el('div', 'support panel pe');
+    const a = btn('', () => arm('air'), '공중 지원: 썬더볼트가 지정 지점에 기총 소사와 폭격');
+    a.dataset.k = 'air';
+    const p = btn('', () => arm('pod'), '드롭 포드: 전술 분대가 지정 지점에 강하');
+    p.dataset.k = 'pod';
+    d.append(a, p);
+    this.root.appendChild(d);
+    this.supportEl = d;
+    this.setSupport(sup, null);
+  }
+
+  setSupport(sup: { air: number; pods: number }, armed: 'air' | 'pod' | null) {
+    const d = this.supportEl; if (!d) return;
+    const a = d.querySelector('[data-k="air"]') as HTMLButtonElement, p = d.querySelector('[data-k="pod"]') as HTMLButtonElement;
+    a.innerHTML = `✈ 공중 지원<small>${sup.air}회</small>`; a.disabled = sup.air <= 0; a.classList.toggle('on', armed === 'air'); a.style.display = sup.air > 0 || armed === 'air' ? '' : 'none';
+    p.innerHTML = `⬇ 드롭 포드<small>${sup.pods}회</small>`; p.disabled = sup.pods <= 0; p.classList.toggle('on', armed === 'pod'); p.style.display = sup.pods > 0 || armed === 'pod' ? '' : 'none';
+  }
+
+  /** A unit that joined mid-battle (drop pod). */
+  addUnit(u: Unit) {
+    if (u.side === this.side && !this.cards.has(u.id)) this.addCard(u);
+    if (!this.banners.has(u.id)) this.addBanner(u);
+  }
   onBanner?: (u: Unit, e: PointerEvent) => void;
   private deployEl: HTMLDivElement | null = null;
 
@@ -179,6 +216,12 @@ export class Hud {
       const u0 = sel[0];
       this.obtn.run.classList.toggle('on', sel.every((u) => u.run));
       this.obtn.fire.classList.toggle('on', sel.every((u) => u.fireAtWill));
+      this.obtn.melee.classList.toggle('on', sel.every((u) => u.meleeMode || u.meleeOnly));
+      this.obtn.melee.disabled = sel.every((u) => u.meleeOnly);
+      this.obtn.guard.classList.toggle('on', sel.every((u) => u.guard));
+      this.obtn.skirm.classList.toggle('on', sel.length > 0 && sel.every((u) => u.skirmish));
+      this.obtn.skirm.disabled = sel.every((u) => u.meleeOnly);
+      this.obtn.lock.classList.toggle('on', this.groupLocked);
       for (const [f] of FORMS) this.obtn['f_' + f].classList.toggle('on', sel.every((u) => u.formation === f));
       const ab = u0.tpl.ability ? ABILITIES[u0.tpl.ability] : null;
       const ready = sel.some((u) => u.tpl.ability && u.abilityCd <= 0);

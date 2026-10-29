@@ -105,3 +105,47 @@ describe('reaction animations', () => {
     expect(stuckDown).toBe(0);
   }, 240000);
 });
+
+describe('unit modes and support', () => {
+  it('melee mode: a ranged unit stops shooting and charges when ordered to attack', () => {
+    const b = new Battle(ruins, sc('cadia_line'), clips, 5);
+    const u = b.units.find((x) => x.side === 0 && !x.meleeOnly)!;
+    const e = b.units.find((x) => x.side === 1)!;
+    b.place(u, e.x, e.z + 40, Math.PI);
+    u.meleeMode = true;
+    let shots = 0;
+    for (let i = 0; i < 20 * 6; i++) { for (const v of b.units) if (v.side === 1) { v.order = { type: 'idle' }; v.moving = false; } b.update(1 / 20); for (const ev of b.events) if (ev.type === 'shot' && ev.s.unit === u) shots++; b.events.length = 0; }
+    expect(shots).toBe(0);
+    b.order(u, { type: 'attack', target: e });
+    expect(u.run).toBe(true);
+  });
+
+  it('skirmish mode: ranged units fall back from a charging mob', () => {
+    const b = new Battle(ruins, sc('cadia_line'), clips, 5);
+    const u = b.units.find((x) => x.side === 0 && !x.meleeOnly)!;
+    const mob = b.units.find((x) => x.side === 1 && x.meleeOnly)!;
+    b.place(u, 0, 40, Math.PI); b.place(mob, 0, 20, 0);
+    u.skirmish = true;
+    b.order(mob, { type: 'attack', target: u, run: true, charge: true });
+    let fell = false;
+    for (let i = 0; i < 20 * 3 && !fell; i++) { b.update(1 / 20); b.events.length = 0; if (u.order.type === 'move' && u.order.z! > 40) fell = true; }
+    expect(fell).toBe(true);
+  });
+
+  it('support blast damages and knocks down enemies only, and a deep-strike squad joins the battle', () => {
+    const b = new Battle(ruins, sc('marines_vs_orks'), clips, 5);
+    const mob = b.units.find((x) => x.side === 1)!;
+    const before = mob.soldiers.reduce((a, s) => a + s.hp, 0);
+    const friend = b.units.find((x) => x.side === 0)!; const fhp = friend.soldiers.reduce((a, s) => a + s.hp, 0);
+    b.blast(mob.x, mob.z, 8, 60, 0.4, 0);
+    expect(mob.soldiers.reduce((a, s) => a + Math.max(0, s.hp), 0)).toBeLessThan(before);
+    expect(friend.soldiers.reduce((a, s) => a + s.hp, 0)).toBe(fhp);
+    expect(mob.soldiers.some((s) => s.alive && s.anim.clip === 'knockdown')).toBe(true);
+    const n = b.units.length;
+    const u = b.deepStrike('tactical', 0, 0, 30, Math.PI);
+    expect(b.units.length).toBe(n + 1);
+    expect(u.soldiers.length).toBe(10);
+    for (let i = 0; i < 40; i++) b.update(1 / 20);
+    expect(u.soldiers.every((s) => Number.isFinite(s.x))).toBe(true);
+  });
+});

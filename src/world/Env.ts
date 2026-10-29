@@ -63,46 +63,44 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
   // the backdrop ring is thinned on lower quality settings (every other block on medium, a quarter on low)
   const keep = map.backdrop.filter((_, i) => i === 0 || (i * 0.618034) % 1 < backdrop);
+  /** one kit part moved into place, attributes normalised for merging (float position/normal/uv, RGBA AO colour, index) */
+  const prep = (g: THREE.BufferGeometry, mat: string, m: THREE.Matrix4) => {
+    const c = g.clone();
+    c.applyMatrix4(m);
+    for (const k of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) c.deleteAttribute(k);
+    if (!c.attributes.color) c.setAttribute('color', new THREE.BufferAttribute(new Float32Array(c.attributes.position.count * 4).fill(1), 4));
+    if (c.attributes.color.itemSize === 3) {
+      const src = c.attributes.color.array as ArrayLike<number>;
+      const col = new Float32Array(c.attributes.position.count * 4);
+      for (let i = 0; i < c.attributes.position.count; i++) { col[i * 4] = src[i * 3]; col[i * 4 + 1] = src[i * 3 + 1]; col[i * 4 + 2] = src[i * 3 + 2]; col[i * 4 + 3] = 1; }
+      c.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    }
+    boxUV(c, UV_SCALE[mat] ?? 2.0);
+    if (!c.index) { const idx = new Uint32Array(c.attributes.position.count); for (let i = 0; i < idx.length; i++) idx[i] = i; c.setIndex(new THREE.BufferAttribute(idx, 1)); }
+    for (const k of ['position', 'normal', 'uv', 'color']) {
+      const at = c.attributes[k] as THREE.BufferAttribute;
+      if (!(at.array instanceof Float32Array) || at.normalized) {
+        const fl = new Float32Array(at.count * at.itemSize);
+        for (let i = 0; i < at.count; i++) for (let j = 0; j < at.itemSize; j++) fl[i * at.itemSize + j] = at.getComponent(i, j);
+        c.setAttribute(k, new THREE.BufferAttribute(fl, at.itemSize));
+      }
+    }
+    return c;
+  };
   for (const [list, byMat] of [[map.placements, near], [keep, far]] as const) for (const p of list) {
     const parts = pieces.get(p.piece);
     if (!parts) continue;
     q.setFromAxisAngle(up, p.rot);
     m4.compose(v.set(p.x, p.y, p.z), q, s);
     for (const [mat, g] of parts) {
-      const c = g.clone();
-      c.applyMatrix4(m4);
-      for (const k of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) c.deleteAttribute(k);
-      if (!c.attributes.color) {
-        const col = new Float32Array(c.attributes.position.count * 4).fill(1);
-        c.setAttribute('color', new THREE.BufferAttribute(col, 4));
-      }
-      if (c.attributes.color.itemSize === 3) {
-        const src = c.attributes.color.array as ArrayLike<number>;
-        const col = new Float32Array(c.attributes.position.count * 4);
-        for (let i = 0; i < c.attributes.position.count; i++) { col[i * 4] = src[i * 3]; col[i * 4 + 1] = src[i * 3 + 1]; col[i * 4 + 2] = src[i * 3 + 2]; col[i * 4 + 3] = 1; }
-        c.setAttribute('color', new THREE.BufferAttribute(col, 4));
-      }
-      boxUV(c, UV_SCALE[mat] ?? 2.0);
-      if (!c.index) { const idx = new Uint32Array(c.attributes.position.count); for (let i = 0; i < idx.length; i++) idx[i] = i; c.setIndex(new THREE.BufferAttribute(idx, 1)); }
-      const nonIndexed = c;
-      // normalise attribute types for merging
-      for (const k of ['position', 'normal', 'uv', 'color']) {
-        const a = nonIndexed.attributes[k] as THREE.BufferAttribute;
-        if (!(a.array instanceof Float32Array) || a.normalized) {
-          const f = new Float32Array(a.count * a.itemSize);
-          for (let i = 0; i < a.count; i++) for (let j = 0; j < a.itemSize; j++) f[i * a.itemSize + j] = a.getComponent(i, j);
-          nonIndexed.setAttribute(k, new THREE.BufferAttribute(f, a.itemSize));
-        }
-      }
       if (!byMat.has(mat)) byMat.set(mat, []);
-      byMat.get(mat)!.push(nonIndexed);
+      byMat.get(mat)!.push(prep(g, mat, m4));
     }
   }
   const group = new THREE.Group();
   group.name = 'env';
   const mats: Partial<Record<EnvMat, THREE.MeshStandardMaterial>> = {};
-  let tris = 0;
-  for (const [byMat, isFar] of [[near, false], [far, true]] as const) for (const [matName, geos] of byMat) {
+  const getMat = (matName: string) => {
     const name = (ENV_MATS as readonly string[]).includes(matName) ? matName as EnvMat : 'ferrocrete';
     if (!mats[name]) {
       const t = envTexture(name, texSize);
@@ -121,16 +119,37 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
       m.name = name;
       mats[name] = m;
     }
+    return mats[name]!;
+  };
+  let tris = 0;
+  for (const [byMat, isFar] of [[near, false], [far, true]] as const) for (const [matName, geos] of byMat) {
+    const mat = getMat(matName);
     const merged = mergeGeometries(geos, false);
     if (!merged) continue;
     merged.computeBoundingSphere();
-    const mesh = new THREE.Mesh(merged, mats[name]);
+    const mesh = new THREE.Mesh(merged, mat);
     // far blocks sit outside every shadow frustum: skip them in the shadow pass
-    mesh.castShadow = !isFar && castShadow && name !== 'glass' && name !== 'lamp';
+    mesh.castShadow = !isFar && castShadow && mat.name !== 'glass' && mat.name !== 'lamp';
     mesh.receiveShadow = !isFar;
-    mesh.name = (isFar ? 'far_' : 'env_') + name;
+    mesh.name = (isFar ? 'far_' : 'env_') + mat.name;
     group.add(mesh);
     tris += merged.attributes.position.count / 3;
   }
-  return { group, tris };
+  /** A movable copy of one kit piece (drop pods, aircraft): one mesh per material, origin at the piece origin. */
+  const makePiece = (name: string) => {
+    const parts = pieces.get(name);
+    const g = new THREE.Group(); g.name = name;
+    if (!parts) return g;
+    const byMat = new Map<string, THREE.BufferGeometry[]>();
+    const I = new THREE.Matrix4();
+    for (const [mat, geo] of parts) { if (!byMat.has(mat)) byMat.set(mat, []); byMat.get(mat)!.push(prep(geo, mat, I)); }
+    for (const [mat, geos] of byMat) {
+      const merged = mergeGeometries(geos, false); if (!merged) continue;
+      merged.computeBoundingSphere();
+      const mesh = new THREE.Mesh(merged, getMat(mat)); mesh.castShadow = castShadow; mesh.receiveShadow = true;
+      g.add(mesh);
+    }
+    return g;
+  };
+  return { group, tris, makePiece };
 }

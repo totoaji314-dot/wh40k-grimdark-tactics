@@ -659,6 +659,79 @@ def p_ork_totem():
     return p
 
 
+# ------------------------------------------------------------------ drop pod (closed for the descent, open after landing)
+def _pod_core():
+    p = []
+    body = lathe([(0.0, 0.0), (1.05, 0.0), (1.25, 0.35), (1.25, 0.9), (1.05, 3.6), (0.55, 4.3), (0.25, 4.75), (0.0, 4.85)], seg=10)
+    p.append((body, 'metal'))
+    p.append((xf(torus(1.27, 0.07, seg=20, seg2=5), (0, 0, 0.9)), 'brass'))
+    p.append((xf(torus(0.58, 0.06, seg=16, seg2=5), (0, 0, 4.25)), 'brass'))
+    p.append((xf(cyl(0.18, 0.5, seg=10), (0, 0, 5.05)), 'metal'))                       # guidance mast
+    p.append((xf(sphere(0.12, 10, 6), (0, 0, 5.35)), 'red'))
+    for k in range(5):                                                                    # stabiliser fins at the base
+        a = math.radians(36 + 72 * k)
+        fin = rbox(0.12, 0.9, 1.2, bev=0.03, taper=(1.0, 0.4))
+        xf(fin, (math.cos(a) * 1.35, math.sin(a) * 1.35, 0.75), rot=(0, 0, math.degrees(a) + 90))
+        p.append((fin, 'metal'))
+    p.append((xf(cyl(0.7, 0.35, seg=12, r2=0.5), (0, 0, -0.1)), 'scrap'))               # retro thruster housing
+    return p
+
+
+def _door(open_):
+    """One hatch petal; closed it stands as a wall section, open it lies flat as a ramp."""
+    d = rbox(1.35, 0.12, 2.6, bev=0.03, taper=(0.62, 1.0))
+    stripe = rbox(1.0, 0.13, 0.22); xf(stripe, (0, 0, 0.9))
+    eagle = rbox(0.5, 0.14, 0.32, bev=0.04, taper=(0.6, 1)); xf(eagle, (0, 0, 0.2))
+    for b in (d, stripe, eagle):
+        xf(b, (0, 0, 1.3))                     # hinge at z=0
+        if open_:
+            xf(b, rot=(-86, 0, 0))             # fold outward onto the ground
+    return [(d, 'metal'), (stripe, 'hazard'), (eagle, 'brass')]
+
+
+def _pod(open_):
+    p = _pod_core()
+    for k in range(5):
+        a = 72 * k
+        for b, m in _door(open_):
+            xf(b, (0, 1.12, 0.35), rot=(0, 0, a))
+            p.append((b, m))
+    return p
+
+
+@piece('drop_pod', (3.4, 3.4), cover=0.8, block=True, height=5.0)
+def p_drop_pod():
+    return _pod(False)
+
+
+@piece('drop_pod_open', (6.5, 6.5), cover=0.6, block=False, height=5.0)
+def p_drop_pod_open():
+    return _pod(True)
+
+
+# ------------------------------------------------------------------ strike fighter (air support run), nose toward -Y
+@piece('thunderbolt', (12, 14), cover=0.0, block=False, height=3.0)
+def p_thunderbolt():
+    p = []
+    fus = rbox(1.5, 11.0, 1.5, bev=0.25, seg=3, taper_y=(0.55, 0.6)); xf(fus, (0, 0, 0))
+    p.append((fus, 'metal'))
+    nose = lathe([(0.0, 0.0), (0.45, 0.6), (0.62, 1.4)], seg=10); xf(nose, (0, -6.9, 0), rot=(-90, 0, 0)); p.append((nose, 'metal'))
+    canopy = ellipsoid(0.48, 1.4, 0.42, 14, 8); xf(canopy, (0, -3.0, 0.75)); p.append((canopy, 'glass'))
+    for sx in (1, -1):
+        wing = extrude([(0.0, 0.0), (5.8 * sx, 1.2), (5.8 * sx, 2.4), (0.0, 3.6)], 0.22, bev=0.04); perm = wing
+        for v in perm.verts: v.co.y, v.co.z = v.co.z, v.co.y          # lay the profile flat (XY plane)
+        xf(perm, (0, -0.5, -0.2)); p.append((perm, 'metal'))
+        p.append((xf(cyl(0.38, 3.4, seg=12), (sx * 1.0, 3.0, 0.15), rot=(90, 0, 0)), 'metal'))         # engine
+        p.append((xf(cyl(0.3, 0.3, seg=12), (sx * 1.0, 4.75, 0.15), rot=(90, 0, 0)), 'scrap'))         # exhaust
+        p.append((xf(rbox(0.12, 2.0, 1.9, bev=0.03, taper=(1, 0.45)), (sx * 0.9, 4.4, 1.3), rot=(0, sx * 12, 0)), 'metal'))  # tail fin
+        for k in range(2):
+            p.append((xf(cyl(0.12, 1.6, seg=8), (sx * (2.2 + k * 1.4), 0.4, -0.55), rot=(90, 0, 0)), 'red'))  # missiles
+        p.append((xf(cyl(0.07, 1.6, seg=8), (sx * 0.5, -6.6, -0.35), rot=(90, 0, 0)), 'scrap'))         # autocannon barrel
+    p.append((xf(rbox(1.0, 0.1, 0.5, bev=0.02), (0, -1.2, 0.8)), 'brass'))
+    p.append((xf(rbox(2.2, 3.0, 0.12, bev=0.04), (0, 4.6, 0.2)), 'metal'))                              # tailplane
+    return p
+
+
 # ------------------------------------------------------------------ build all
 objs = []
 for name, fn in PIECES.items():

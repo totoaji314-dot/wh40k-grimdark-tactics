@@ -1,4 +1,4 @@
-import { SCENARIOS, UNITS, FACTIONS, unitSize, type Scenario } from '../sim/data';
+import { SCENARIOS, UNITS, FACTIONS, unitSize, type Scenario , type Deploy } from '../sim/data';
 import type { Settings } from '../core/Settings';
 import { el } from './Hud';
 
@@ -47,7 +47,7 @@ export class Menu {
         <span>난이도</span><button class="btn" data-d="0">쉬움</button><button class="btn on" data-d="1">보통</button><button class="btn" data-d="2">어려움</button>
         <span style="margin-left:10px">병력 규모</span><button class="btn on" data-s="1">기본</button><button class="btn" data-s="2">2배 (대규모 시험)</button>
       </div>
-      <div class="row"><button class="btn" id="sc-back">← 뒤로</button><button class="btn big" id="sc-go">출전</button></div>`;
+      <div class="row"><button class="btn" id="sc-back">← 뒤로</button><button class="btn" id="sc-custom">커스텀 전투 ⚙</button><button class="btn big" id="sc-go">출전</button></div>`;
     this.ui.appendChild(s);
     const mark = () => s.querySelectorAll('.scen').forEach((c) => c.classList.toggle('sel', (c as HTMLElement).dataset.id === sel.id));
     mark();
@@ -56,6 +56,50 @@ export class Menu {
     s.querySelectorAll('[data-s]').forEach((b) => b.addEventListener('click', () => { scale = Number((b as HTMLElement).dataset.s); s.querySelectorAll('[data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
     s.querySelector('#sc-back')!.addEventListener('click', onBack);
     s.querySelector('#sc-go')!.addEventListener('click', () => onStart(sel, diff, scale));
+    s.querySelector('#sc-custom')!.addEventListener('click', () => this.custom((sc, d) => onStart(sc, d, 1), () => this.scenarios(onStart, onBack)));
+  }
+
+  /** Custom battle: pick the map, both armies unit by unit, and off-map support; deployment follows. */
+  custom(onStart: (sc: Scenario, difficulty: number) => void, onBack: () => void) {
+    this.clear();
+    const s = el('div', 'screen bg custom');
+    s.style.flexDirection = 'column';
+    const counts: [Record<string, number>, Record<string, number>] = [{ tactical: 2, devastator: 1 }, { boyz: 2, shootas: 1 }];
+    let map: Scenario['map'] = 'ruins', diff = 1, air = 2, pods = 1;
+    const roster = (side: 0 | 1) => Object.values(UNITS).map((t) => `<div class="ros-row" title="${t.desc}"><span class="ic" style="color:${FACTIONS[t.faction].color}">${t.icon}</span><span class="nm">${t.ko}<small>${FACTIONS[t.faction].ko} · ${unitSize(t)}명</small></span><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="-1">−</button><b data-cnt="${side}-${t.id}">0</b><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="1">+</button></div>`).join('');
+    s.innerHTML = `<div class="title" style="max-width:1120px"><h1 style="font-size:clamp(22px,3.6vw,36px)">커스텀 전투</h1><h2>전장과 양측 군대, 지원 전력을 직접 편성합니다</h2></div>
+      <div class="row panel" style="padding:8px 12px"><span>전장</span><button class="btn on" data-map="ruins">폐허 도시</button><button class="btn" data-map="trenches">참호선</button>
+        <span style="margin-left:10px">난이도</span><button class="btn" data-d="0">쉬움</button><button class="btn on" data-d="1">보통</button><button class="btn" data-d="2">어려움</button></div>
+      <div class="ros-grid"><div class="panel ros"><h3>아군 (플레이어) <span id="tot0"></span></h3>${roster(0)}</div><div class="panel ros"><h3>적군 (AI) <span id="tot1"></span></h3>${roster(1)}</div></div>
+      <div class="row panel" style="padding:8px 12px"><span>공중 지원</span><button class="btn sm" data-air="-1">−</button><b id="air"></b><button class="btn sm" data-air="1">+</button>
+        <span style="margin-left:12px">드롭 포드 강하 (전술 분대)</span><button class="btn sm" data-pod="-1">−</button><b id="pods"></b><button class="btn sm" data-pod="1">+</button></div>
+      <div class="row"><button class="btn" id="cu-back">← 뒤로</button><button class="btn big" id="cu-go">배치 단계로</button></div>`;
+    this.ui.appendChild(s);
+    const refresh = () => {
+      for (const side of [0, 1] as const) {
+        let n = 0, men = 0;
+        for (const t of Object.values(UNITS)) { const c = counts[side][t.id] ?? 0; n += c; men += c * unitSize(t); (s.querySelector(`[data-cnt="${side}-${t.id}"]`) as HTMLElement).textContent = String(c); }
+        (s.querySelector('#tot' + side) as HTMLElement).textContent = `— ${n}개 부대 · ${men}명`;
+      }
+      const hasMarines = Object.entries(counts[0]).some(([id, c]) => c > 0 && UNITS[id].faction === 'marines');
+      (s.querySelector('#air') as HTMLElement).textContent = String(air);
+      (s.querySelector('#pods') as HTMLElement).textContent = hasMarines ? String(pods) : '— (마린 필요)';
+      (s.querySelector('#cu-go') as HTMLButtonElement).disabled = !Object.values(counts[0]).some((c) => c > 0) || !Object.values(counts[1]).some((c) => c > 0);
+    };
+    s.querySelectorAll('[data-u]').forEach((b) => b.addEventListener('click', () => {
+      const e = b as HTMLElement; const side = Number(e.dataset.side) as 0 | 1, id = e.dataset.u!;
+      const total = Object.values(counts[side]).reduce((a, c) => a + c, 0);
+      const next = Math.max(0, (counts[side][id] ?? 0) + Number(e.dataset.k));
+      if (next > (counts[side][id] ?? 0) && total >= 24) return;
+      counts[side][id] = next; refresh();
+    }));
+    s.querySelectorAll('[data-map]').forEach((b) => b.addEventListener('click', () => { map = (b as HTMLElement).dataset.map as Scenario['map']; s.querySelectorAll('[data-map]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    s.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => { diff = Number((b as HTMLElement).dataset.d); s.querySelectorAll('[data-d]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    s.querySelectorAll('[data-air]').forEach((b) => b.addEventListener('click', () => { air = Math.max(0, Math.min(5, air + Number((b as HTMLElement).dataset.air))); refresh(); }));
+    s.querySelectorAll('[data-pod]').forEach((b) => b.addEventListener('click', () => { pods = Math.max(0, Math.min(3, pods + Number((b as HTMLElement).dataset.pod))); refresh(); }));
+    s.querySelector('#cu-back')!.addEventListener('click', onBack);
+    s.querySelector('#cu-go')!.addEventListener('click', () => onStart(buildCustomScenario(map, counts, air, pods), diff));
+    refresh();
   }
 
   settings(st: Settings, detected: string, onSave: (s: Settings) => void, onBack: () => void) {
@@ -128,6 +172,9 @@ export const HELP_HTML = `<h2 class="serif" style="color:var(--brass);margin-top
 <div><b>배치 단계</b> 전투 전 파란 구역 안에 부대를 자유롭게 배치하고 <b>전투 시작</b>(Enter)</div>
 <div><b>우클릭 (땅)</b> 이동 · <b>우클릭 드래그</b> 전선의 방향과 <b>폭</b> 지정(길게 끌면 얇고 넓은 전열, 짧게 끌면 두꺼운 대형) · <b>우클릭 (적)</b> 공격 (근접 부대는 돌격) · <b>더블 우클릭</b> 달려서 이동/공격</div>
 <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>/화살표 카메라 이동 · <kbd>Q</kbd><kbd>E</kbd> 회전 · 마우스 휠/<kbd>Z</kbd><kbd>X</kbd> 확대·축소 · 휠 클릭 드래그 회전·기울기</div>
+<div><b>부대 모드</b> <kbd>M</kbd> 근접전 모드(사격 대신 백병전) · <kbd>V</kbd> 경계 모드(자리 사수, 추격 안 함) · <kbd>X</kbd> 견제 모드(적이 달려들면 물러나며 사격) · <kbd>L</kbd> 그룹 진형 고정(여러 부대가 배치를 유지하며 이동)</div>
+<div><b>지원 전력</b> 왼쪽 위 버튼 → 지점 클릭: ✈ 공중 지원(썬더볼트 기총 소사·폭격), ⬇ 드롭 포드(전술 분대 강하, 착지 충격으로 적을 넘어뜨림) · 우클릭/Esc 취소</div>
+<div><b>커스텀 전투</b> 전투 선택 → 커스텀 전투: 전장, 양측 부대, 공중 지원·드롭 포드 횟수를 직접 편성</div>
 <div><kbd>H</kbd> 정지 · <kbd>R</kbd> 달리기 · <kbd>C</kbd> 돌격 · <kbd>F</kbd> 자유 사격 · <kbd>G</kbd> 특수 능력 · <kbd>Alt</kbd>+<kbd>1</kbd>~<kbd>4</kbd> 전열/종대/산개/방어 진형 (그룹이 없을 때는 <kbd>1</kbd>~<kbd>4</kbd>만으로도) · <kbd>Ctrl</kbd>+<kbd>숫자</kbd> 부대 그룹 지정 · <kbd>숫자</kbd> 그룹 선택(두 번: 카메라 이동)</div>
 <div><kbd>Space</kbd> 일시정지 (일시정지 중에도 명령 가능) · <kbd>+</kbd><kbd>-</kbd> 배속 · <kbd>Esc</kbd> 메뉴</div>
 <h3>모바일 · 태블릿 (디벗)</h3>
@@ -145,3 +192,22 @@ export const ABOUT_HTML = `<h2 class="serif" style="color:var(--brass);margin-to
 <div>스페이스 마린·아스트라 밀리타룸·데스 코어 오브 크리그·오크의 모든 3D 모델, 리깅, 애니메이션, 텍스처, 건물은 Blender 스크립트로 이 프로젝트에서 새로 만들었습니다. 지형 텍스처와 효과음은 실행 중 절차적으로 생성됩니다.</div>
 <h3>사용한 오픈소스</h3>
 <div>three.js (MIT) · meshoptimizer (MIT) · glTF-Transform (MIT) · Vite (MIT) · Blender (GPL, 제작 도구로만 사용)</div>`;
+
+/** Lay out a custom army list in deployment rows (side 0 south, side 1 north); the deployment phase refines it. */
+export function buildCustomScenario(map: Scenario['map'], counts: [Record<string, number>, Record<string, number>], air: number, pods: number): Scenario {
+  const sides: Deploy[][] = [[], []];
+  for (const side of [0, 1] as const) {
+    const list: string[] = [];
+    for (const [id, c] of Object.entries(counts[side])) for (let i = 0; i < c; i++) list.push(id);
+    const perRow = 6;
+    list.forEach((id, i) => {
+      const row = Math.floor(i / perRow), col = i % perRow, inRow = Math.min(perRow, list.length - row * perRow);
+      const x = (col - (inRow - 1) / 2) * 30;
+      const z = side === 0 ? 66 + row * 24 : -100 - row * 24;
+      sides[side].push({ unit: id, x, z });
+    });
+  }
+  const fac = (side: 0 | 1) => [...new Set(sides[side].map((d) => UNITS[d.unit].faction))];
+  const hasMarines = fac(0).includes('marines');
+  return { id: 'custom', ko: '커스텀 전투', desc: '직접 편성한 전투', player: fac(0), enemy: fac(1), side0: sides[0], side1: sides[1], map, support: { air, pods: hasMarines ? pods : 0 } };
+}

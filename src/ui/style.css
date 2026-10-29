@@ -117,3 +117,21 @@ button.btn.big { padding: 14px 22px; font-size: 1.1em; }
   .deploy .dd { font-size: 10.5px; }
   .deploy button.go { font-size: 13px; padding: 4px 10px; min-height: 32px; }
 }
+
+/* custom battle builder */
+.custom .ros-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: min(1120px, 96vw); max-height: 52vh; }
+.custom .ros { overflow-y: auto; padding: 8px 10px; }
+.custom .ros h3 { margin: 4px 0 8px; color: var(--brass); font-family: Georgia, serif; font-size: 16px; }
+.custom .ros-row { display: grid; grid-template-columns: 28px 1fr 34px 30px 34px; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #ffffff10; }
+.custom .ros-row .ic { font-size: 18px; text-align: center; }
+.custom .ros-row .nm small { display: block; color: var(--dim); font-size: 11px; }
+.custom .ros-row b, .custom .row b { text-align: center; min-width: 22px; display: inline-block; }
+button.btn.sm { min-height: 30px; padding: 2px 8px; }
+@media (max-height: 520px), (max-width: 760px) { .custom .ros-grid { max-height: 46vh; gap: 6px; } .custom .ros-row { grid-template-columns: 22px 1fr 30px 24px 30px; } }
+
+/* off-map support buttons */
+.support { position: absolute; left: 8px; top: 56px; display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+.support button.btn { min-width: 128px; text-align: left; }
+.support button.btn small { display: block; font-size: 11px; opacity: 0.75; }
+.support button.btn.on { background: linear-gradient(#7a3a18, #4a1c08); border-color: #ffb070; }
+@media (max-height: 520px), (max-width: 760px) { .support { top: 44px; padding: 3px; gap: 3px; } .support button.btn { min-width: 92px; min-height: 30px; padding: 2px 6px; font-size: 11.5px; } }

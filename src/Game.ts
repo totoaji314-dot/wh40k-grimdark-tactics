@@ -27,6 +27,8 @@ const STEP = 1 / 30;
 const SUN_DIR = new THREE.Vector3(-0.86, 0.33, -0.3).normalize();
 const BASE = import.meta.env.BASE_URL;
 
+interface Strike { kind: 'air' | 'pod'; t: number; x: number; z: number; dx: number; dz: number; mesh: THREE.Group; shots: number; bombs: number; done: boolean; pending?: { t: number; x: number; z: number }[] }
+
 export interface BattleOptions { scenario: Scenario; difficulty: number; scale: number; quality: QualityLevel; seed?: number   /** false skips the pre-battle deployment phase (automated tests) */
   deploy?: boolean;
 }
@@ -115,6 +117,9 @@ export class Game {
     progress(0.15, '부대 모델 로드 중');
     const factions = new Set<FactionId>();
     for (const d of [...sc.side0, ...sc.side1]) factions.add(UNITS[d.unit].faction);
+    const playerFactions = new Set((this.playerSide === 0 ? sc.side0 : sc.side1).map((d) => UNITS[d.unit].faction));
+    this.support = { air: sc.support?.air ?? 0, pods: playerFactions.has('marines') ? sc.support?.pods ?? 0 : 0 };
+    if (this.support.pods > 0) factions.add('marines');
     this.lib = new UnitLibrary(BASE + 'assets/units/', this.renderer.capabilities.getMaxAnisotropy() > 4 ? 4 : 1);
     this.lib.overrides = await localFactionOverrides();
     if (this.lib.overrides.marines) console.info('[units] marines: local Space Marine (2011) reference models (dev server only)');
@@ -136,6 +141,8 @@ export class Game {
       const f: Figure = { variant: s.def.id, x: s.x, y: s.y, z: s.z, yaw: s.yaw, scale: s.def.scale, tint: s.tint, anim: s.anim, visible: true };
       this.figures.push(f); this.figOf.set(s, f);
     }
+    // room for drop-pod reinforcements (one tactical squad per pod)
+    for (const [id, n] of UNITS.tactical.members) counts[id] = (counts[id] ?? 0) + n * this.support.pods;
     this.units = new UnitRenderer(this.lib, counts, P.shadowSize > 0 && this.settings.shadows);
     this.units.lodDist = [24, 64];
     this.scene.add(this.units.group);
@@ -148,6 +155,7 @@ export class Game {
     const density = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 0.6 : 0.3;
     const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25);
     this.scene.add(env.group);
+    this.makePiece = env.makePiece;
     console.info('[env] triangles', env.tris, 'backdrop blocks', this.map.backdrop.length);
     this.scatter = buildScatter(this.map, density, this.opts.quality === 'high' && P.shadowSize > 0 && this.settings.shadows);
     this.scene.add(this.scatter.group);
@@ -187,6 +195,10 @@ export class Game {
       run: () => { const on = ![...this.selected].every((u) => u.run); this.forSel((u) => { u.run = on; }); },
       charge: () => this.chargeNearest(),
       fireAtWill: () => { const on = ![...this.selected].every((u) => u.fireAtWill); this.forSel((u) => { u.fireAtWill = on; if (!on && u.order.type !== 'attack') u.target = null; }); },
+      meleeMode: () => this.toggleMode('meleeMode', '근접전 모드'),
+      guard: () => this.toggleMode('guard', '경계 모드'),
+      skirmish: () => this.toggleMode('skirmish', '견제 모드'),
+      groupLock: () => { this.groupLock = !this.groupLock; this.hud.groupLocked = this.groupLock; this.hud.toast(this.groupLock ? '그룹 진형 고정: 부대 간 배치를 유지하며 이동' : '그룹 진형 고정 해제', 1.6); this.hud.update(0, this.selected, this.speed, this.paused); },
       formation: (f) => this.forSel((u) => this.battle.setFormation(u, f)),
       ability: () => this.forSel((u) => { if (this.battle.useAbility(u)) this.abilityFx(u); }),
       selectAll: () => this.selectAll(),
@@ -197,6 +209,7 @@ export class Game {
       this.clickUnit(u, e.shiftKey || e.ctrlKey || this.hud.multi);
     };
     try { this.hud.setPortraits(this.renderPortraits()); } catch (e) { console.warn('portraits', e); }
+    this.hud.showSupport(this.support, (k) => this.armSupport(k));
     if (this.opts.deploy !== false) this.beginDeployment();
     this.hud.fpsEl.style.display = this.settings.showFps ? '' : 'none';
     this.buildMinimapBg();
@@ -324,6 +337,7 @@ export class Game {
     this.units.update(this.camera, this.figures, this.preset.lodBias);
     this.updateRings();
     this.fx.update(this.paused ? 0 : dt * this.speed, this.camera.position, [1.2, -0.6]);
+    if (!this.paused && !this.deploying) this.updateStrikes(dt * this.speed);
     this.updateSun();
     this.updateFireLights();
     this.clock += dt;
@@ -354,7 +368,8 @@ export class Game {
 
   private syncFigures() {
     for (const s of this.battle.soldiers) {
-      const f = this.figOf.get(s)!;
+      const f = this.figOf.get(s);
+      if (!f) continue;
       f.x = s.x; f.y = s.y; f.z = s.z; f.yaw = s.yaw;
       f.visible = !(s as Soldier & { fled?: boolean }).fled;
     }
@@ -478,7 +493,8 @@ export class Game {
         case 'rout': this.hud.toast(`${e.u.name} 패주!`, 2.5); this.audio.play('horn', e.u.x, e.u.z, 0.5); break;
         case 'rally': if (e.u.side === this.playerSide) this.hud.toast(`${e.u.name} 재집결`, 2); break;
         case 'ability': this.abilityFx(e.u); break;
-        case 'explosion': this.fx.explosion(e.x, e.y, e.z, e.r * 0.8, 0x70c8ff); this.audio.play('explosion', e.x, e.z, 0.7); break;
+        case 'explosion': this.fx.explosion(e.x, e.y, e.z, e.r * 0.8, e.color ?? 0x70c8ff); this.audio.play('explosion', e.x, e.z, e.color ? 1 : 0.7); if (e.color) this.rig.shake = Math.max(this.rig.shake, 0.5); break;
+        case 'reinforce': this.addUnitView(e.u); break;
         case 'order': break;
       }
     }
@@ -512,7 +528,7 @@ export class Game {
 
   attack(target: Unit, run: boolean) {
     if (this.deploying) { this.hud.toast('배치 단계에서는 이동·배치만 할 수 있습니다 — 준비되면 전투 시작', 2); return; }
-    for (const u of this.selected) this.battle.order(u, { type: 'attack', target, run: run || u.meleeOnly, charge: u.meleeOnly });
+    for (const u of this.selected) this.battle.order(u, { type: 'attack', target, run: run || u.meleeOnly || u.meleeMode, charge: u.meleeOnly || u.meleeMode });
     this.audio.play('click');
     this.markTarget = { u: target, t: 1.2 };
   }
@@ -544,6 +560,28 @@ export class Game {
     } else {
       yaw = Math.hypot(ax - cx, az - cz) > 4 ? Math.atan2(ax - cx, az - cz) : units[0].yaw;
       len = 0; mx = ax; mz = az;
+    }
+    // group formation lock: the selection keeps its relative layout; a drag turns the whole group to the new facing
+    if (this.groupLock && units.length > 1) {
+      const yaw0 = Math.atan2(units.reduce((s, u) => s + Math.sin(u.yaw), 0), units.reduce((s, u) => s + Math.cos(u.yaw), 0));
+      const dYaw = len > 0 ? yaw - yaw0 : 0, c = Math.cos(dYaw), sn = Math.sin(dYaw);
+      const m4 = new THREE.Matrix4();
+      let n = 0;
+      for (const u of units) {
+        const ox = u.x - cx, oz = u.z - cz;
+        let px = mx + ox * c + oz * sn, pz = mz + oz * c - ox * sn;
+        const uy = u.yaw + dYaw;
+        if (this.deploying) [px, pz] = this.clampToZone(px, pz);
+        if (previewOnly) {
+          const save = { x: u.x, z: u.z, yaw: u.yaw };
+          u.x = px; u.z = pz; u.yaw = uy;
+          for (const so of u.soldiers) if (so.alive && n < 1200) { const [wx, wz] = this.battle.slotWorld(u, so); m4.makeTranslation(wx, this.map.heightAt(wx, wz) + 0.07, wz); this.preview.setMatrixAt(n++, m4); }
+          u.x = save.x; u.z = save.z; u.yaw = save.yaw;
+        } else if (this.deploying) this.battle.place(u, px, pz, uy);
+        else this.battle.order(u, { type: 'move', x: px, z: pz, yaw: uy, run });
+      }
+      if (previewOnly) { this.preview.count = n; this.preview.instanceMatrix.needsUpdate = true; } else { this.preview.count = 0; this.audio.play('click'); }
+      return;
     }
     const GAP = 4;
     const widths = units.map((u) => (u.files > 0 && u.formation !== 'column' ? u.files : this.battle.autoFiles(u)) * this.battle.fileSpacing(u) + GAP);
@@ -653,7 +691,10 @@ export class Game {
       if (e.button === 0 && lDown) {
         const box = this.hud.selBox.style.display !== 'none';
         if (box) this.boxSelect(lDown.x, lDown.y, e.clientX, e.clientY, e.shiftKey || e.ctrlKey);
-        else if (e.target === cv) {
+        else if (e.target === cv && this.targeting) {
+          const g = this.groundAt(e.clientX, e.clientY);
+          if (g) this.callSupport(g.x, g.z);
+        } else if (e.target === cv) {
           const u = this.pickUnit(e.clientX, e.clientY);
           if (u && u.side === this.playerSide) this.select(u, e.shiftKey || e.ctrlKey);
           else if (!u && !e.shiftKey) this.selected.clear();
@@ -661,6 +702,7 @@ export class Game {
         this.hud.selBox.style.display = 'none';
         lDown = null;
       }
+      if (e.button === 2 && this.targeting) { this.armSupport(null); rDown = null; return; }
       if (e.button === 2 && rDown) {
         const now = performance.now();
         const dbl = now - lastRight < 350;
@@ -682,12 +724,16 @@ export class Game {
       this.keys.add(e.code);
       const k = e.code;
       if (k === 'Space') { e.preventDefault(); this.togglePause(); }
-      else if (k === 'Escape') this.openMenu();
+      else if (k === 'Escape') { if (this.targeting) this.armSupport(null); else this.openMenu(); }
       else if (k === 'KeyH') this.forSel((u) => this.battle.order(u, { type: 'halt' }));
       else if (k === 'KeyR') { const on2 = ![...this.selected].every((u) => u.run); this.forSel((u) => { u.run = on2; }); }
       else if (k === 'KeyC') this.chargeNearest();
       else if (k === 'KeyF') { const on2 = ![...this.selected].every((u) => u.fireAtWill); this.forSel((u) => { u.fireAtWill = on2; }); }
       else if (k === 'KeyG') this.forSel((u) => { if (this.battle.useAbility(u)) this.abilityFx(u); });
+      else if (k === 'KeyM') this.toggleMode('meleeMode', '근접전 모드');
+      else if (k === 'KeyV') this.toggleMode('guard', '경계 모드');
+      else if (k === 'KeyX') this.toggleMode('skirmish', '견제 모드');
+      else if (k === 'KeyL') { this.groupLock = !this.groupLock; this.hud.groupLocked = this.groupLock; this.hud.toast(this.groupLock ? '그룹 진형 고정' : '그룹 진형 고정 해제', 1.4); }
       else if (k === 'KeyA' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.selectAll(); }
       else if ((k === 'Enter' || k === 'NumpadEnter') && this.deploying) this.startBattle();
       else if (/^Digit[1-9]$/.test(k) && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.assignGroup(Number(k[5])); }
@@ -761,6 +807,7 @@ export class Game {
   private lastTouch = -1e9;
 
   private tap(x: number, y: number) {
+    if (this.targeting) { const g = this.groundAt(x, y); if (g) this.callSupport(g.x, g.z); return; }
     const u = this.pickUnit(x, y, 34);
     if (u) { this.clickUnit(u, this.hud.multi); return; }
     if (!this.selected.size) return;
@@ -792,6 +839,153 @@ export class Game {
     const next = mine[(mine.indexOf(cur as Unit) + 1) % mine.length];
     this.select(next, false);
     this.rig.focus(next.x, next.z);
+  }
+
+  /** Toggle a unit mode on the selection (all on if any is off). Melee mode needs a unit that can also fight hand to hand. */
+  groupLock = false;
+  private toggleMode(key: 'meleeMode' | 'guard' | 'skirmish', label: string) {
+    const sel = [...this.selected].filter((u) => this.battle.active(u) && (key !== 'skirmish' || !u.meleeOnly) && (key !== 'meleeMode' || !u.meleeOnly));
+    if (!sel.length) return;
+    const on = !sel.every((u) => u[key]);
+    for (const u of sel) {
+      u[key] = on;
+      if (key === 'meleeMode' && on) { u.skirmish = false; if (u.order.type !== 'attack') u.target = null; }
+      if (key === 'skirmish' && on) u.meleeMode = false;
+    }
+    this.hud.toast(`${label} ${on ? '켬' : '끔'}`, 1.2);
+    this.audio.play('click');
+    this.hud.update(0, this.selected, this.speed, this.paused);
+  }
+
+  // ====================================================================== off-map support: air strikes and drop pods
+  support = { air: 0, pods: 0 };
+  private targeting: 'air' | 'pod' | null = null;
+  private makePiece: (name: string) => THREE.Group = () => new THREE.Group();
+  private strikes: Strike[] = [];
+
+  private armSupport(k: 'air' | 'pod' | null) {
+    if (k && this.deploying) { this.hud.toast('지원 전력은 전투가 시작된 뒤 호출할 수 있습니다', 1.8); return; }
+    if (k && this.support[k === 'air' ? 'air' : 'pods'] <= 0) return;
+    this.targeting = this.targeting === k ? null : k;
+    document.body.style.cursor = this.targeting ? 'crosshair' : '';
+    this.hud.setSupport(this.support, this.targeting);
+    if (this.targeting) this.hud.toast(this.targeting === 'air' ? '공중 지원: 폭격할 지점을 누르세요 (우클릭·Esc 취소)' : '드롭 포드: 강하 지점을 누르세요 (우클릭·Esc 취소)', 2.5);
+  }
+
+  private callSupport(x: number, z: number) {
+    const k = this.targeting;
+    this.targeting = null; document.body.style.cursor = '';
+    if (!k) return;
+    if (k === 'air') {
+      this.support.air--;
+      // fly in from behind the player's lines toward the enemy
+      const enemyZ = this.battle.units.filter((u) => u.side !== this.playerSide).reduce((s, u) => s + u.z, 0);
+      const dz = enemyZ < z * this.battle.units.filter((u) => u.side !== this.playerSide).length ? -1 : 1;
+      const mesh = this.makePiece('thunderbolt');
+      this.scene.add(mesh);
+      this.strikes.push({ kind: 'air', t: 0, x, z, dx: 0, dz, mesh, shots: 0, bombs: 0, done: false });
+      this.audio.play('jet', x, z, 1);
+      this.hud.toast('썬더볼트 공습 개시!', 2);
+    } else {
+      this.support.pods--;
+      const mesh = this.makePiece('drop_pod');
+      mesh.position.set(x, this.map.heightAt(x, z) + 260, z);
+      this.scene.add(mesh);
+      this.strikes.push({ kind: 'pod', t: 0, x, z, dx: 0, dz: 0, mesh, shots: 0, bombs: 0, done: false });
+      this.audio.play('pod', x, z, 1);
+      this.hud.toast('드롭 포드 강하!', 2);
+    }
+    this.hud.setSupport(this.support, null);
+  }
+
+  private updateStrikes(dt: number) {
+    for (const s of this.strikes) {
+      s.t += dt;
+      if (s.kind === 'air') this.stepAir(s); else this.stepPod(s);
+    }
+    for (const s of this.strikes) if (s.done && s.mesh.parent && s.kind === 'air') this.scene.remove(s.mesh);
+    this.strikes = this.strikes.filter((s) => !s.done || s.kind === 'pod');
+  }
+
+  private stepAir(s: Strike) {
+    const V = 95, L = 170, alt = 34;
+    const along = -L + V * s.t;                       // metres along the run, 0 = over the target
+    const gx = s.x + s.dx * along, gz = s.z + s.dz * along;
+    const gy = Math.max(this.map.heightAt(s.x, s.z), this.map.heightAt(gx, gz)) + alt - 10 * Math.max(0, 1 - Math.abs(along) / 90);
+    s.mesh.position.set(gx, gy, gz);
+    s.mesh.rotation.set(0.12 * Math.max(0, 1 - Math.abs(along) / 60), Math.atan2(s.dx, s.dz), 0.1 * Math.sin(s.t * 3));
+    // strafing run: cannon shells walk along the line from 30 m short of the target to 15 m past it
+    if (along > -95 && along < -20) {
+      const want = Math.floor((along + 95) / 3.2);
+      while (s.shots < want) {
+        s.shots++;
+        const k = -30 + s.shots * 0.8;
+        const ix = s.x + s.dx * k + (Math.random() - 0.5) * 3, iz = s.z + s.dz * k + (Math.random() - 0.5) * 3;
+        const iy = this.map.heightAt(ix, iz);
+        this.fx.tracer(gx, gy - 0.6, gz, ix, iy, iz, 0.12, 'hbolt');
+        if (s.shots % 2 === 0) this.audio.play('hbolter', gx, gz, 0.8);
+        this.battle.blast(ix, iz, 2.6, 26, 0.35, this.playerSide, 0);
+      }
+    }
+    // bombs released over the target, landing in a short stick
+    if (along > -14 && s.bombs < 3) {
+      const k = -9 + s.bombs * 9;
+      s.bombs++;
+      const bx = s.x + s.dx * k, bz = s.z + s.dz * k;
+      (s.pending ??= []).push({ t: s.t + 0.35 + s.bombs * 0.12, x: bx, z: bz });   // fall time, on the game clock
+    }
+    for (const b of s.pending ?? []) if (b.t <= s.t && b.t > -1) { this.battle.blast(b.x, b.z, 7.5, 75, 0.45, this.playerSide, 0.6); b.t = -2; }
+    if (along > L && (s.pending ?? []).every((b) => b.t < -1)) s.done = true;
+  }
+
+  private stepPod(s: Strike) {
+    const T = 2.3;
+    const g = this.map.heightAt(s.x, s.z);
+    if (s.t < T) {
+      const k = s.t / T;
+      s.mesh.position.set(s.x, g + 260 * (1 - k * k), s.z);
+      s.mesh.rotation.y = s.t * 0.6;
+      // re-entry trail
+      const p = s.mesh.position;
+      this.fx.spawn(p.x, p.y - 0.5, p.z, { size: 2.6, grow: -2, life: 0.25, color: 0xff9a40, frame: 2, add: true, vy: 4 });
+      this.fx.spawn(p.x + (Math.random() - 0.5), p.y + 2, p.z + (Math.random() - 0.5), { size: 2.2, grow: 4, life: 2.6, color: 0x3a3430, alpha: 0.6, frame: 1, vy: 2 });
+      return;
+    }
+    if (s.shots === 0) {
+      // impact: blast wave knocks enemies down, the hatches drop and the squad deploys
+      s.shots = 1;
+      this.scene.remove(s.mesh);
+      const open = this.makePiece('drop_pod_open');
+      open.position.set(s.x, g, s.z); open.rotation.y = s.mesh.rotation.y;
+      this.scene.add(open); s.mesh = open;
+      this.battle.blast(s.x, s.z, 8, 55, 0.35, this.playerSide, 0.75);
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2;
+        this.fx.spawn(s.x + Math.cos(a) * 2, g + 0.4, s.z + Math.sin(a) * 2, { size: 2.4, grow: 5, life: 1.8, color: 0x7a6a58, alpha: 0.55, frame: 1, vx: Math.cos(a) * 9, vz: Math.sin(a) * 9, vy: 0.8, drag: 2 });
+      }
+      this.rig.shake = 1;
+    }
+    if (s.t > T + 0.7 && s.bombs === 0) {
+      s.bombs = 1;
+      const enemy = this.battle.units.filter((u) => u.side !== this.playerSide && this.battle.active(u));
+      const ex = enemy.length ? enemy.reduce((a, u) => a + u.x, 0) / enemy.length : s.x, ez = enemy.length ? enemy.reduce((a, u) => a + u.z, 0) / enemy.length : s.z - 10;
+      const yaw = Math.atan2(ex - s.x, ez - s.z);
+      const u = this.battle.deepStrike('tactical', this.playerSide, s.x + Math.sin(yaw) * 6, s.z + Math.cos(yaw) * 6, yaw);
+      this.addUnitView(u);
+      this.hud.toast(`${u.name} 전장에 강하!`, 2.5);
+      this.audio.play('horn', s.x, s.z, 0.7);
+      s.done = true;
+    }
+  }
+
+  /** Figures, card and banner for a unit that joined mid-battle. */
+  private addUnitView(u: Unit) {
+    for (const s of u.soldiers) {
+      if (this.figOf.has(s)) continue;
+      const f: Figure = { variant: s.def.id, x: s.x, y: s.y, z: s.z, yaw: s.yaw, scale: s.def.scale, tint: s.tint, anim: s.anim, visible: true };
+      this.figures.push(f); this.figOf.set(s, f);
+    }
+    this.hud.addUnit(u);
   }
 
   // ====================================================================== deployment and control groups

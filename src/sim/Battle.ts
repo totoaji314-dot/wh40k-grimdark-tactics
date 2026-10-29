@@ -82,6 +82,11 @@ export interface Unit {
   attackedRear: number;
   maxRange: number;
   meleeOnly: boolean;
+  /** Total War unit modes: melee mode (ranged unit fights hand to hand), guard (hold ground), skirmish (ranged units back off from chargers) */
+  meleeMode: boolean;
+  guard: boolean;
+  skirmish: boolean;
+  skirmT: number;
   moving: boolean;
   selected: boolean;
   label: string;
@@ -98,8 +103,9 @@ export type BattleEvent =
   | { type: 'rout'; u: Unit }
   | { type: 'rally'; u: Unit }
   | { type: 'ability'; u: Unit; id: AbilityId }
-  | { type: 'explosion'; x: number; y: number; z: number; r: number }
-  | { type: 'order'; u: Unit; kind: string };
+  | { type: 'explosion'; x: number; y: number; z: number; r: number; color?: number }
+  | { type: 'order'; u: Unit; kind: string }
+  | { type: 'reinforce'; u: Unit };
 
 const SPATIAL = 3; // spatial hash cell (m)
 /** Bursts per magazine before a reload animation. */
@@ -114,6 +120,8 @@ const REACTIONS = ['hit', 'stagger', 'block', 'knockdown', 'getup'];
 function setReload(s: Soldier, delay: number) { reloadAt.set(s, delay); }
 /** Global melee damage scale: Total War-style melee grinds on for tens of seconds instead of resolving instantly. */
 export const MELEE_SCALE = 0.5;
+/** a unit that fights hand to hand: no ranged weapons, or switched to melee mode */
+export const melee = (u: { meleeOnly: boolean; meleeMode: boolean }) => u.meleeOnly || u.meleeMode;
 /** Most enemies that can press one soldier at once, by body mass: a guardsman 2, an ork 3, a marine or nob 4, a warboss 6. */
 export const meleeCap = (o: { def: { melee: { mass: number } } }) => { const m = o.def.melee.mass; return m >= 5 ? 6 : m >= 2.5 ? 4 : m >= 1.5 ? 3 : 2; };
 
@@ -169,7 +177,7 @@ export class Battle {
       order: { type: 'idle' }, path: [], pathI: 0, repathT: 0, run: false, fireAtWill: true, target: null, charging: false,
       morale: tpl.morale, mstate: 'steady', routs: 0, routT: 0, suppression: 0, fatigue: 0, inMelee: false,
       kills: 0, losses: 0, lossLog: [], killLog: [], abilityCd: 0, abilityT: 0, buffs: { waaagh: 0, aim: 0 }, attackedRear: 0,
-      maxRange: 0, meleeOnly: true, moving: false, selected: false, label: tpl.short,
+      maxRange: 0, meleeOnly: true, meleeMode: false, guard: false, skirmish: false, skirmT: 0, moving: false, selected: false, label: tpl.short,
     };
     const defs: SoldierDef[] = [];
     for (const [id, n] of tpl.members) for (let i = 0; i < n; i++) defs.push(SOLDIERS[id]);
@@ -224,10 +232,10 @@ export class Battle {
       this.events.push({ type: 'order', u, kind: 'move' });
     } else if (o.type === 'attack' && o.target) {
       u.target = o.target;
-      u.run = o.run ?? u.meleeOnly;
+      u.run = o.run ?? melee(u);
       u.path = []; u.pathI = 0; u.repathT = 0;
       u.moving = true;
-      this.events.push({ type: 'order', u, kind: o.charge || u.meleeOnly ? 'charge' : 'attack' });
+      this.events.push({ type: 'order', u, kind: o.charge || melee(u) ? 'charge' : 'attack' });
     } else if (o.type === 'halt') {
       u.target = null; u.path = []; u.moving = false; u.run = false;
       u.order = { type: 'idle' };
@@ -408,9 +416,27 @@ export class Battle {
       const near = this.nearestEnemyUnit(u);
       if (near) {
         const [d] = near;
-        if (!u.meleeOnly && u.fireAtWill && d < u.maxRange * 0.98) u.target = near[1];
-        else if (u.meleeOnly && d < 18) u.target = near[1];
+        if (!melee(u) && u.fireAtWill && d < u.maxRange * 0.98) u.target = near[1];
+        else if (melee(u) && d < (u.guard ? 6 : 18)) u.target = near[1];
         else if (!u.target || !this.active(u.target)) u.target = null;
+      }
+    }
+
+    // --- skirmish mode: ranged units fall back from chargers and melee troops, then keep shooting
+    if (u.skirmish && !u.inMelee && !melee(u)) {
+      u.skirmT -= dt;
+      if (u.skirmT <= 0) {
+        u.skirmT = 1;
+        const near = this.nearestEnemyUnit(u);
+        if (near && near[0] < 24 && (near[1].charging || melee(near[1]) || near[1].order.type === 'attack')) {
+          const e = near[1]; const [ux, uz] = this.centre(u);
+          const dx = ux - e.x, dz = uz - e.z, d = Math.hypot(dx, dz) || 1;
+          const tx = Math.max(-PLAY + 5, Math.min(PLAY - 5, ux + (dx / d) * 22)), tz = Math.max(-PLAY + 5, Math.min(PLAY - 5, uz + (dz / d) * 22));
+          if (!this.map.isBlocked(tx, tz)) {
+            this.order(u, { type: 'move', x: tx, z: tz, yaw: Math.atan2(e.x - tx, e.z - tz), run: true });
+            this.events.push({ type: 'order', u, kind: 'skirmish' });
+          }
+        }
       }
     }
 
@@ -418,8 +444,8 @@ export class Battle {
     const [cx, cz] = this.centre(u);
     if (u.inMelee) {
       u.moving = false; u.path = [];
-      // drift the anchor toward the fight so idle soldiers close in
-      u.x += (cx - u.x) * dt * 0.5; u.z += (cz - u.z) * dt * 0.5;
+      // drift the anchor toward the fight so idle soldiers close in (a unit on guard holds its ground)
+      if (!u.guard) { u.x += (cx - u.x) * dt * 0.5; u.z += (cz - u.z) * dt * 0.5; }
       if (u.target) u.yaw = turn(u.yaw, Math.atan2(u.target.x - u.x, u.target.z - u.z), dt * 0.8);
       return;
     }
@@ -437,8 +463,8 @@ export class Battle {
       const t = u.order.target;
       const [tx, tz] = this.centre(t);
       const d = Math.hypot(tx - cx, tz - cz);
-      const melee = u.meleeOnly || u.order.charge;
-      if (melee) {
+      const meleeApproach = melee(u) || u.order.charge;
+      if (meleeApproach) {
         u.repathT -= dt;
         if (u.repathT <= 0 || !u.path.length) { u.path = this.nav.path(u.x, u.z, tx, tz); u.pathI = 0; u.repathT = 1.2; }
         if (d < 32 && !u.charging) { u.charging = true; this.events.push({ type: 'charge', u, target: t }); for (const s of alive) s.chargeT = 6; }
@@ -468,7 +494,7 @@ export class Battle {
     if (u.target) {
       const [tx, tz] = this.centre(u.target);
       u.yaw = turn(u.yaw, Math.atan2(tx - u.x, tz - u.z), dt * 0.7);
-      if (u.meleeOnly && Math.hypot(tx - u.x, tz - u.z) < 18) { u.order = { type: 'attack', target: u.target, run: true }; }
+      if (melee(u) && Math.hypot(tx - u.x, tz - u.z) < 18) { u.order = { type: 'attack', target: u.target, run: true }; }
     }
   }
 
@@ -537,7 +563,7 @@ export class Battle {
     // ---------- melee
     if (s.foe && (!s.foe.alive || dist(s, s.foe) > s.def.melee.reach + 1.4)) s.foe = null;
     if (!s.foe && u.mstate !== 'routing') {
-      const engage = u.inMelee || u.charging || u.meleeOnly || u.order.type === 'attack';
+      const engage = u.inMelee || u.charging || melee(u) || u.order.type === 'attack';
       const R = s.def.melee.reach + (engage ? 0.9 : 0.4);
       let best: Soldier | null = null, bd = 1e9, nearest: Soldier | null = null, nd = R;
       this.near(s.x, s.z, R, (o) => {
@@ -602,8 +628,8 @@ export class Battle {
     let waitSpot = false;
     tx = 0; tz = 0;
     // defenders holding a trench do not climb out to chase: they gang up on enemies that reach the line and keep shooting
-    const holdTrench = !u.charging && !u.order.charge && !u.meleeOnly && this.map.inTrench(s.x, s.z);
-    if ((u.charging || u.inMelee || (u.meleeOnly && u.target && u.order.type === 'attack')) && u.target) {
+    const holdTrench = (!u.charging && !u.order.charge && !melee(u) && this.map.inTrench(s.x, s.z)) || (u.guard && !u.charging && !u.order.charge);
+    if ((u.charging || u.inMelee || (melee(u) && u.target && u.order.type === 'attack')) && u.target) {
       // fight: go for the nearest enemy of the target unit (or anyone close)
       let bd = holdTrench ? 4.5 : u.charging ? 40 : 18, crowdedSeek: Soldier | null = null, cd = bd;
       const consider = (o: Soldier) => {
@@ -744,6 +770,7 @@ export class Battle {
     const main = s.def.weapon ? WEAPONS[s.def.weapon] : null;
     const pistol = s.def.pistol ? WEAPONS[s.def.pistol] : null;
     if (!main && !pistol) return false;
+    if (u.meleeMode) return false;
     // soldiers locked in melee fight instead of shooting; the rest of a melee-locked unit only keeps firing from a trench line
     if (s.foe || u.charging) return false;
     const trenchLine = u.inMelee && !u.order.charge && this.map.inTrench(s.x, s.z);
@@ -876,6 +903,42 @@ export class Battle {
     this.layout(u, false);
   }
 
+  /** Throw a soldier off his feet (charge by something much heavier, blast wave); he gets up when the fall ends. */
+  knockDown(o: Soldier) {
+    if (!o.alive || knocked.has(o)) return;
+    knocked.set(o, this.time + this.clip(o, 'knockdown').dur);
+    o.hitT = this.clip(o, 'knockdown').dur + this.clip(o, 'getup').dur;
+    o.foe = null; o.strikeT = -1; o.strikeFoe = null;
+    play(o.anim, 'knockdown', 1, 0.04, true);
+  }
+
+  /** Off-map support blast (bomb, drop-pod impact): falloff damage, suppression and knockdown near the centre. */
+  blast(x: number, z: number, r: number, dmg: number, ap: number, side: number, knock = 0.55) {
+    this.events.push({ type: 'explosion', x, y: this.map.heightAt(x, z), z, r, color: 0xff8a30 });
+    this.rebuildHash();   // blasts can land between ticks (bomb timers)
+    const hitUnits = new Set<Unit>();
+    this.near(x, z, r, (v) => {
+      if (!v.alive || v.side === side) return;
+      const d = Math.hypot(v.x - x, v.z - z);
+      if (d > r) return;
+      const k = 1 - d / r;
+      hitUnits.add(v.unit);
+      if (d < r * knock && v.def.melee.mass < 5) this.knockDown(v);
+      this.damage(v, dmg * (0.35 + 0.65 * k), ap, null);
+    });
+    for (const u of hitUnits) { u.suppression = Math.min(1, u.suppression + 0.35); u.morale -= 4; }
+  }
+
+  /** Reinforcements arriving mid-battle (drop pod): a new unit at x,z facing yaw. */
+  deepStrike(tplId: string, side: number, x: number, z: number, yaw: number) {
+    const tpl = UNITS[tplId];
+    const n = this.units.filter((u) => u.tpl.id === tplId && u.side === side).length + 1;
+    const u = this.spawnUnit(tpl, side, x, z, yaw, `${tpl.ko} ${n} (강하)`);
+    for (const s of u.soldiers) { s.anim = newAnim('aim', this.rnd()); }
+    this.events.push({ type: 'reinforce', u });
+    return u;
+  }
+
   private chargeImpact(s: Soldier, o: Soldier) {
     const ms = s.def.melee.mass, mo = o.def.melee.mass;
     if (ms > mo * 1.25 && this.rnd() < 0.5) {
@@ -886,10 +949,7 @@ export class Battle {
       const px = o.x + nx * push, pz = o.z + nz * push;
       if (!this.map.isBlocked(px, pz)) { o.x = px; o.z = pz; }
       if (ms > mo * 2 && this.rnd() < 0.45 && o.alive) {
-        knocked.set(o, this.time + this.clip(o, 'knockdown').dur);
-        o.hitT = this.clip(o, 'knockdown').dur + this.clip(o, 'getup').dur;
-        o.foe = null; o.strikeT = -1; o.strikeFoe = null;
-        play(o.anim, 'knockdown', 1, 0.04, true);
+        this.knockDown(o);
       } else {
         o.hitT = 0.7;
         if (o.alive) play(o.anim, 'stagger', 1, 0.05, true);
