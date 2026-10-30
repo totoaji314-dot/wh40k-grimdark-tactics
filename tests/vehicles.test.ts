@@ -105,5 +105,5 @@ describe('vehicles', () => {
       expect(charged).toBe(false);
       for (const t of tanks) { expect(Number.isNaN(t.x)).toBe(false); expect(b.map.isBlocked(t.x, t.z)).toBe(false); }
     }
-  });
+  }, 60000);   // three full battles: several seconds on a CI runner
 });
