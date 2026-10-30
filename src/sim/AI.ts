@@ -45,6 +45,13 @@ export class Commander {
 
   private think(u: Unit, mine: Unit[], foes: Unit[]) {
     const b = this.b;
+    // hero powers that matter most in the thick of it
+    const L = u.leader?.alive ? u.leader : null;
+    if (L && u.abilityCd <= 0 && (u.tpl.ability === 'fury' || u.tpl.ability === 'emperor_light')) {
+      let close = 0;
+      b.near(L.x, L.z, 20, (o) => { if (o.alive && o.side !== u.side) close++; });
+      if (u.tpl.ability === 'fury' ? (u.inMelee || L.hp < L.maxHp * 0.6) && close > 0 : close >= 6) b.useAbility(u);
+    }
     if (u.inMelee) return;
     const { v: tgt, d } = this.nearest(u, foes);
     if (!tgt) return;
@@ -75,7 +82,7 @@ export class Commander {
     if (threatened && !goodMelee && u.formation !== 'defensive' && dist(this.centre(u), this.centre(threatened)) < 30) b.setFormation(u, 'defensive');
     if (!threatened && u.formation === 'defensive' && !u.inMelee) b.setFormation(u, u.tpl.formation);
     // abilities when there is something to shoot
-    if (u.tpl.ability && u.abilityCd <= 0 && d < u.maxRange * 0.9) {
+    if (u.tpl.ability && u.tpl.ability !== 'fury' && u.tpl.ability !== 'emperor_light' && u.abilityCd <= 0 && d < u.maxRange * 0.9) {
       if (u.tpl.ability === 'bayonet') { if (d < 30 && this.strength(tgt) < 0.6) { b.useAbility(u); b.order(u, { type: 'attack', target: tgt, run: true, charge: true }); return; } }
       else b.useAbility(u);
     }

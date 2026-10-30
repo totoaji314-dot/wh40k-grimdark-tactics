@@ -160,23 +160,5 @@
   ],
   "source": "https://polyhaven.com/a/rusted_wheel_rim_01",
   "license": "CC0"
- },
- "gothic_statue": {
-  "size": [
-   1.473,
-   1.74,
-   1.564
-  ],
-  "min": [
-   -0.78,
-   -0.016,
-   -1.189
-  ],
-  "tris": 8999,
-  "authors": [
-   "Benny Weimer"
-  ],
-  "source": "https://polyhaven.com/a/gothic_statue",
-  "license": "CC0"
  }
 }

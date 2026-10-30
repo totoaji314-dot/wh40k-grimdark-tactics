@@ -74,7 +74,7 @@ async function boot() {
     g.start();
   };
 
-  // test hooks for automated checks: ?auto=<scenario>&q=<quality>
+  // test hooks for automated checks: ?auto=<scenario>&q=<quality>[&map=<battlefield>]
   (window as unknown as { __app: unknown }).__app = {
     start: (id: string, diff = 1, scale = 1, qq?: QualityLevel, deploy = false) => { if (qq) settings.quality = qq; return start(SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0], diff, scale, deploy); },
     get game() { return game; },
@@ -83,7 +83,9 @@ async function boot() {
   };
   if (q.has('auto')) {
     if (q.get('q')) settings.quality = q.get('q') as QualityLevel;
-    start(SCENARIOS.find((s) => s.id === q.get('auto')) ?? SCENARIOS[0], 1, Number(q.get('scale') ?? 1), q.get('deploy') === '1');
+    const sc = SCENARIOS.find((s) => s.id === q.get('auto')) ?? SCENARIOS[0];
+    // &map=terra plays the scenario's armies on another battlefield
+    start(q.get('map') ? { ...sc, map: q.get('map') as typeof sc.map } : sc, 1, Number(q.get('scale') ?? 1), q.get('deploy') === '1');
   } else title();
 }
 

@@ -2,10 +2,10 @@
 // Checks that battles resolve, nothing goes NaN, soldiers stay out of walls, and prints balance stats.
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
-import { BattleMap } from '../src/world/MapGen';
+import { BattleMap, type MapType } from '../src/world/MapGen';
 import { Battle } from '../src/sim/Battle';
 import { Commander } from '../src/sim/AI';
-import { SCENARIOS } from '../src/sim/data';
+import { SCENARIOS, type Scenario } from '../src/sim/data';
 import type { ClipTable } from '../src/sim/anim';
 
 const foot = JSON.parse(fs.readFileSync('public/assets/env/env.json', 'utf8'));
@@ -19,14 +19,20 @@ for (const f of ['marines', 'guard', 'krieg', 'orks']) {
 }
 
 const maps = new Map<string, BattleMap>();
-function mapFor(type: 'ruins' | 'trenches') {
+function mapFor(type: MapType) {
   if (!maps.has(type)) maps.set(type, new BattleMap(type, foot));
   return maps.get(type)!;
 }
 
 describe('battle simulation', () => {
   const seeds = (process.env.SEEDS ?? '7').split(',').map(Number);
-  for (const sc of SCENARIOS) for (const seed of seeds) {
+  // a custom battle on the Holy Terra map: Cadian lines and a tactical squad before the palace bastion, orks attacking from the north
+  const terra: Scenario = {
+    id: 'terra_test', ko: '홀리 테라 시험', desc: '', player: ['marines', 'guard'], enemy: ['orks'], map: 'terra',
+    side0: [{ unit: 'infantry', x: -60, z: 92 }, { unit: 'heavy_platoon', x: 0, z: 92 }, { unit: 'infantry', x: 60, z: 92 }, { unit: 'tactical', x: 0, z: 70 }, { unit: 'leman_russ', x: 0, z: 110 }],
+    side1: [{ unit: 'boyz', x: -60, z: -120 }, { unit: 'boyz', x: 0, z: -115 }, { unit: 'boyz', x: 60, z: -120 }, { unit: 'shootas', x: -30, z: -130 }, { unit: 'shootas', x: 30, z: -130 }, { unit: 'nobz', x: 0, z: -150 }],
+  };
+  for (const sc of [...SCENARIOS, terra]) for (const seed of seeds) {
     it(`${sc.id} seed ${seed} resolves AI vs AI`, () => {
       const map = mapFor(sc.map);
       const b = new Battle(map, sc, clips, seed);

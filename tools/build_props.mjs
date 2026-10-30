@@ -1,7 +1,8 @@
 // Build public/assets/props/props.glb from downloaded CC0 Poly Haven models (originals stay untouched in
 // D:/01_BoltgunReference/Downloaded_Assets/polyhaven). Each prop is simplified for many on-screen copies, its
 // textures shrunk to WebP, and all of them merged into one file with one root node per prop.
-//   node tools/build_props.mjs [sourceDir]
+//   node tools/build_props.mjs [props|terra] [sourceDir]
+// The 'terra' set (Holy Terra palace district: fort walls and towers, gate, statues, lamps) is loaded only on that map.
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -10,9 +11,11 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, prune, quantize, meshopt, weld, simplify, textureCompress, mergeDocuments, getBounds } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 
-const SRC = process.argv[2] || 'D:/01_BoltgunReference/Downloaded_Assets/polyhaven';
-// id -> [target triangles, texture size]
-const PROPS = {
+const SET = process.argv[2] === 'terra' ? 'terra' : 'props';
+const SRC = process.argv[3] || 'D:/01_BoltgunReference/Downloaded_Assets/polyhaven';
+// id -> [target triangles, texture size, source folder (default: id), only this top-level node of the source]
+const SETS = {};
+SETS.props = {
   Barrel_01: [1400, 512],
   barrel_03: [1200, 512],
   concrete_road_barrier: [1600, 512],
@@ -22,8 +25,19 @@ const PROPS = {
   metal_jerrycan: [900, 256],
   old_tyre: [1200, 256],
   rusted_wheel_rim_01: [1100, 256],
-  gothic_statue: [9000, 1024],
 };
+SETS.terra = {
+  gothic_statue: [9000, 512],
+  horse_statue_01: [7000, 512],
+  lion_head: [5000, 512],
+  large_iron_gate: [6000, 1024],
+  large_castle_door: [4000, 512],
+  street_lamp_01: [2600, 512],
+  portable_searchlight: [2200, 512],
+  fort_wall: [3000, 1024, 'modular_fort_01', 'modular_fort_01_wall_thick_straight_01'],
+  fort_tower: [5000, 1024, 'modular_fort_01', 'modular_fort_01_tower_round'],
+};
+const PROPS = SETS[SET];
 
 await MeshoptEncoder.ready;
 await MeshoptSimplifier.ready;
@@ -35,10 +49,17 @@ out.createBuffer();
 const outScene = out.createScene('props');
 out.getRoot().setDefaultScene(outScene);
 const meta = {};
-for (const [id, [target, tex]] of Object.entries(PROPS)) {
-  const dir = path.join(SRC, id);
+for (const [id, [target, tex, srcId = id, only]] of Object.entries(PROPS)) {
+  const dir = path.join(SRC, srcId);
   const file = fs.readdirSync(dir).find((f) => f.endsWith('.gltf'));
   const doc = await io.read(path.join(dir, file));
+  if (only) {
+    // one piece of a modular kit: drop every other top-level node, then prune what they used
+    const sc = doc.getRoot().getDefaultScene() || doc.getRoot().listScenes()[0];
+    for (const n of sc.listChildren()) if (n.getName() !== only) { sc.removeChild(n); n.dispose(); }
+    if (!sc.listChildren().length) throw new Error(only + ' not found in ' + srcId);
+    await doc.transform(prune());
+  }
   const info = JSON.parse(fs.readFileSync(path.join(dir, 'info.json'), 'utf8'));
   const before = tris(doc);
   // some scans ship shape keys (the wheel rim): not needed, and instanced meshes can't drive them
@@ -64,6 +85,6 @@ for (const b of out.getRoot().listBuffers().slice(1)) b.dispose();
 await out.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.TEXTURE, PropertyType.MATERIAL] }), prune({ keepLeaves: false }),
   quantize({ quantizePosition: 14, quantizeNormal: 10, quantizeTexcoord: 12 }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
 fs.mkdirSync('public/assets/props', { recursive: true });
-await io.write('public/assets/props/props.glb', out);
-fs.writeFileSync('public/assets/props/props.json', JSON.stringify(meta, null, 1));
-console.log('props.glb', (fs.statSync('public/assets/props/props.glb').size / 1e3).toFixed(0), 'kB');
+await io.write(`public/assets/props/${SET}.glb`, out);
+fs.writeFileSync(`public/assets/props/${SET}.json`, JSON.stringify(meta, null, 1));
+console.log(`${SET}.glb`, (fs.statSync(`public/assets/props/${SET}.glb`).size / 1e3).toFixed(0), 'kB');

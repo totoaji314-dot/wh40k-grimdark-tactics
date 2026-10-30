@@ -1,4 +1,4 @@
-# 에셋 목록 (ASSET_MANIFEST) — 2026-10-30 (2차 갱신)
+# 에셋 목록 (ASSET_MANIFEST) — 2026-10-31 (3차 갱신)
 
 방침(사용자 지시): 모델은 자체 제작 대신 여러 사이트에서 가장 좋은 모델을 가져온다 (맵 모델 포함).
 원본 다운로드 파일은 저장소 밖 `D:\01_BoltgunReference\Downloaded_Assets\<사이트>\<모델>\`에 손대지 않고 보관하고, 게임용 변환본만 `public/assets/`에 둔다.
@@ -8,7 +8,8 @@
 
 | 모델 | 출처 | 공개 빌드 | 비고 |
 |---|---|---|---|
-| **사진 스캔 소품 10종 (신규)** — 아래 2절 | Poly Haven, CC0 | 포함 | `tools/build_props.mjs` → `public/assets/props/props.glb` 1.8 MB. 환경 키트의 상자·드럼통·바리케이드를 대체하고(충돌 범위 동일), 방어선·벙커·잔해 주변에 잡동사니 배치 |
+| **사진 스캔 소품 9종** — 아래 2절 | Poly Haven, CC0 | 포함 | `tools/build_props.mjs` → `public/assets/props/props.glb` 0.9 MB. 환경 키트의 상자·드럼통·바리케이드를 대체하고(충돌 범위 동일), 방어선·벙커·잔해 주변에 잡동사니 배치 |
+| **홀리 테라 황궁 세트 9종 (신규)** — 아래 2절 | Poly Haven, CC0 | 포함 | `terra.glb` 3.1 MB, 홀리 테라 전장에서만 로드. 성벽·원형 탑·정문 철문·사자 머리·쪽문·성인상·기마상·가로등·탐조등 |
 | 스페이스 마린 4종, 카디안 5종, 크리그 3종, 오크 4종 | 자체 제작 (`tools/blender/factions.py`) | 포함 | **교체 대상** — 3절 후보로 바꾸려면 Sketchfab 로그인 필요 |
 | 리만 러스 전차 | 자체 제작 (`tools/blender/vehicles.py`) | 포함 | **교체 대상** — 3절 후보 |
 | 환경 키트 (건물·참호·드롭 포드·썬더볼트 등) | 자체 제작 (`tools/blender/env.py`) | 포함 | 건물은 **교체 대상** — 3절 후보 |
@@ -27,9 +28,24 @@
 | [metal_jerrycan](https://polyhaven.com/a/metal_jerrycan) | Sean Buckley | 20,022 → 898 | 잡동사니 |
 | [old_tyre](https://polyhaven.com/a/old_tyre) | MP | 2,880 → 1,200 | 잡동사니 (눕힘·쌓음) |
 | [rusted_wheel_rim_01](https://polyhaven.com/a/rusted_wheel_rim_01) | John Hutcheson | 16,440 → 1,099 | 잔해 주변 잡동사니 |
-| [gothic_statue](https://polyhaven.com/a/gothic_statue) | Benny Weimer | 27,739 → 8,999 | 변환만 함 — 배치는 다음 차수(충돌 범위가 맞는 자리 필요) |
 
-받았지만 쓰지 않은 것 (원본은 보관): Barrel_02(플라스틱 통, 현대적), propane_tank(가스통·로고), wooden_crate_02(장식 궤짝), street_lamp_01, large_iron_gate, modular_industrial_pipes_01 — 화풍이 맞지 않거나 자리가 없음.
+**홀리 테라 전장 전용 세트** (`public/assets/props/terra.glb` 3.1 MB, 홀리 테라 전장에서만 로드, `node tools/build_props.mjs terra`):
+
+| 모델 | 제작자 | 원본 → 게임 삼각형 | 쓰임 |
+|---|---|---|---|
+| [modular_fort_01](https://polyhaven.com/a/modular_fort_01) — 두꺼운 성벽 직선 조각 | Rico Cilliers | 2,340 (그대로) | 황궁 성벽 12구간 (1.2배, 길이 17.5 m·높이 10.2 m) |
+| [modular_fort_01](https://polyhaven.com/a/modular_fort_01) — 원형 탑 조각 | Rico Cilliers | 4,772 (그대로) | 성문 탑·성벽 탑 6개 (지름 19 m·높이 16 m) |
+| [large_iron_gate](https://polyhaven.com/a/large_iron_gate) | Josh Dean | 38,140 → 5,997 | 황궁 정문 철문 (3배, 안쪽으로 열린 두 짝) |
+| [lion_head](https://polyhaven.com/a/lion_head) | Tina | 47,214 → 5,000 | 정문 탑 바깥면 사자 머리 장식 (10배) |
+| [large_castle_door](https://polyhaven.com/a/large_castle_door) | Tina | 12,640 → 3,998 | 정문 탑 안쪽 쪽문 |
+| [gothic_statue](https://polyhaven.com/a/gothic_statue) (옷자락 늘어진 성인상) | Benny Weimer | 27,739 → 8,999 | 대로의 성인상 8개 (2.55배, 기존 기념비와 번갈아) |
+| [horse_statue_01](https://polyhaven.com/a/horse_statue_01) | Rico Cilliers | 22,388 → 6,999 | 광장·정문 앞 청동 기마상 3개 (30배, 흰 도자기 → 청동 색) |
+| [street_lamp_01](https://polyhaven.com/a/street_lamp_01) | Josh Dean | 30,610 → 2,752 | 대로 가로등 32개 (기존 키트 가로등 대체) |
+| [portable_searchlight](https://polyhaven.com/a/portable_searchlight) | Elijah Cragg | 18,802 → 2,198 | 벙커 위·방어선 탐조등 6개 |
+
+이 세트로 기본 소품(`props.glb`)에서 gothic_statue가 빠져 1.8 MB → 0.9 MB. 홀리 테라 세트의 화면 부담: 인스턴스 174개, 메시 20개, 삼각형 28.1만 (전장 전체 합계).
+
+받았지만 쓰지 않은 것 (원본은 보관): Barrel_02(플라스틱 통, 현대적), propane_tank(가스통·로고), wooden_crate_02(장식 궤짝), street_lamp_02(벽걸이형), modular_industrial_pipes_01 — 화풍이 맞지 않거나 자리가 없음.
 
 ## 3. 다음 교체 후보 — Sketchfab (전부 "다운로드 가능", 라이선스·설명 확인함)
 

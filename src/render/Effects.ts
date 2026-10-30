@@ -205,7 +205,7 @@ export class Effects {
     const s = st.flash;
     this.spawn(x, y, z, { size: s, grow: -s * 6, life: 0.07, color: st.flashColor, frame: 0, add: true });
     this.spawn(x + dx * s * 0.4, y, z + dz * s * 0.4, { size: s * 0.7, grow: -s * 4, life: 0.06, color: 0xffffff, alpha: 0.8, frame: 0, add: true });
-    if (kind !== 'las' && kind !== 'plasma' && kind !== 'lascannon') this.spawn(x, y, z, { size: 0.25, grow: 1.2, life: 0.9, color: 0x8a8580, alpha: 0.35, frame: 1, vy: 0.5, vx: dx * 0.6, vz: dz * 0.6 });
+    if (kind !== 'las' && kind !== 'plasma' && kind !== 'lascannon' && kind !== 'psy') this.spawn(x, y, z, { size: 0.25, grow: 1.2, life: 0.9, color: 0x8a8580, alpha: 0.35, frame: 1, vy: 0.5, vx: dx * 0.6, vz: dz * 0.6 });
     if (kind === 'shell') {
       // battle cannon: muzzle-brake side jets and a big ring of dust and smoke
       for (const sd of [1, -1]) this.spawn(x - dz * sd * 0.5, y, z + dx * sd * 0.5, { size: 1.1, grow: -3, life: 0.12, color: 0xffb060, frame: 0, add: true, vx: -dz * sd * 6, vz: dx * sd * 6 });
@@ -217,7 +217,7 @@ export class Effects {
   impact(x: number, y: number, z: number, kind: string, hitArmour: boolean, hitFlesh: boolean) {
     const st = TRACER[kind] ?? TRACER.slug;
     if (kind === 'plasma') { this.explosion(x, y, z, 1.2, 0x60c0ff); return; }
-    if (kind === 'shell') return;   // the burst itself comes with the splash explosion event
+    if (kind === 'shell' || kind === 'psy') return;   // the burst itself comes with the splash explosion event
     if (kind === 'lascannon') { this.spawn(x, y, z, { size: 1.6, grow: -4, life: 0.18, color: 0xff6030, frame: 0, add: true }); this.light(x, y, z, 0xff5020, 8, 0.12, 12); }
     if (kind === 'bolt' || kind === 'hbolt') {
       this.spawn(x, y, z, { size: kind === 'hbolt' ? 1.1 : 0.75, grow: -2, life: 0.12, color: 0xffb050, frame: 0, add: true });
@@ -343,5 +343,6 @@ const TRACER: Record<string, Omit<Tracer, 'ax' | 'ay' | 'az' | 'bx' | 'by' | 'bz
   slug: TR('slug', 2.5, 0.06, 0xff9a40, 0.55, 0xffa050),
   shell: TR('shell', 3.2, 0.22, 0xffc070, 1.8, 0xffb060),
   lascannon: TR('lascannon', 14, 0.16, 0xff4020, 1.0, 0xff5030),
+  psy: TR('psy', 9, 0.34, 0xffe090, 1.4, 0xfff0b0),
   none: TR('none', 0, 0, 0, 0, 0),
 };

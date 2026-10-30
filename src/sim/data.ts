@@ -1,8 +1,9 @@
 // Game data: weapons, soldier types, unit templates, armies and scenarios.
+import type { MapType } from '../world/MapGen';
 // Numbers are tuned for Total War-like pacing (battles of a few minutes), not tabletop rules.
 
 export type FactionId = 'marines' | 'guard' | 'krieg' | 'orks';
-export type Tracer = 'las' | 'bolt' | 'hbolt' | 'stub' | 'plasma' | 'slug' | 'shell' | 'lascannon' | 'none';
+export type Tracer = 'las' | 'bolt' | 'hbolt' | 'stub' | 'plasma' | 'slug' | 'shell' | 'lascannon' | 'psy' | 'none';
 
 export interface WeaponDef {
   id: string; ko: string;
@@ -51,6 +52,8 @@ export interface SoldierDef {
   role: 'trooper' | 'leader' | 'heavy' | 'special' | 'officer' | 'boss';
   aura?: number;         // morale aura radius
   vehicle?: VehicleDef;  // tanks: one 'soldier' per vehicle, driven and fought by the vehicle code
+  /** heroes: extra enemies every landed blow also hits (sweeping strikes) */
+  cleave?: number;
 }
 
 export const WEAPONS: Record<string, WeaponDef> = {
@@ -65,6 +68,13 @@ export const WEAPONS: Record<string, WeaponDef> = {
   shoota: { id: 'shoota', ko: '슈타', range: 46, burst: 4, gap: 0.12, cycle: 3.2, dmg: 11, ap: 0.1, acc: 0.3, falloff: 0.5, suppress: 0.006, speed: 170, tracer: 'slug', moveFire: true, sound: 'shoota' },
   battle_cannon: { id: 'battle_cannon', ko: '배틀 캐논', range: 170, burst: 1, gap: 0, cycle: 7.5, dmg: 130, ap: 0.85, acc: 0.45, falloff: 0.35, suppress: 0.22, splash: 4.0, speed: 165, tracer: 'shell', moveFire: true, sound: 'cannon' },
   lascannon: { id: 'lascannon', ko: '라스캐논', range: 150, burst: 1, gap: 0, cycle: 5.5, dmg: 170, ap: 1.0, acc: 0.62, falloff: 0.25, suppress: 0.04, speed: 520, tracer: 'lascannon', moveFire: true, sound: 'lascannon' },
+  // hero weapons
+  bolt_rifle: { id: 'bolt_rifle', ko: '볼트 라이플', range: 70, burst: 3, gap: 0.12, cycle: 3.4, dmg: 22, ap: 0.4, acc: 0.66, falloff: 0.45, suppress: 0.012, speed: 150, tracer: 'bolt', moveFire: true, sound: 'bolter' },
+  heavy_bolt_rifle: { id: 'heavy_bolt_rifle', ko: '헤비 볼트 라이플', range: 78, burst: 3, gap: 0.14, cycle: 3.8, dmg: 27, ap: 0.48, acc: 0.64, falloff: 0.4, suppress: 0.016, speed: 150, tracer: 'hbolt', moveFire: true, sound: 'hbolter' },
+  auto_bolt_rifle: { id: 'auto_bolt_rifle', ko: '오토 볼트 라이플', range: 60, burst: 6, gap: 0.08, cycle: 3.0, dmg: 17, ap: 0.35, acc: 0.58, falloff: 0.5, suppress: 0.014, speed: 145, tracer: 'bolt', moveFire: true, sound: 'bolter' },
+  gauntlets_ultramar: { id: 'gauntlets_ultramar', ko: '울트라마의 건틀릿', range: 62, burst: 6, gap: 0.09, cycle: 3.0, dmg: 24, ap: 0.5, acc: 0.64, falloff: 0.45, suppress: 0.02, speed: 145, tracer: 'hbolt', moveFire: true, sound: 'hbolter' },
+  hand_of_dominion: { id: 'hand_of_dominion', ko: '지배의 손', range: 72, burst: 5, gap: 0.1, cycle: 2.6, dmg: 40, ap: 0.7, acc: 0.74, falloff: 0.35, suppress: 0.03, splash: 1.2, speed: 155, tracer: 'hbolt', moveFire: true, sound: 'hbolter' },
+  psychic_lance: { id: 'psychic_lance', ko: '사이킥 창', range: 120, burst: 1, gap: 0, cycle: 3.2, dmg: 220, ap: 1.0, acc: 0.9, falloff: 0.15, suppress: 0.25, splash: 6.0, speed: 110, tracer: 'psy', moveFire: true, sound: 'lascannon' },
   kombi: { id: 'kombi', ko: '콤비 슈타', range: 32, burst: 4, gap: 0.1, cycle: 2.6, dmg: 16, ap: 0.2, acc: 0.36, falloff: 0.5, suppress: 0.01, speed: 170, tracer: 'slug', moveFire: true, sound: 'shoota' },
 };
 
@@ -99,10 +109,17 @@ export const SOLDIERS: Record<string, SoldierDef> = {
   ork_shoota: { id: 'ork_shoota', faction: 'orks', ko: '슈타 보이', hp: 66, armor: 0.12, walk: 1.3, run: 5.0, charge: 6.6, weapon: 'shoota', melee: M(44, 28, 12, 0.1, 0.9, 1.8), scale: 1, role: 'trooper' },
   ork_nob: { id: 'ork_nob', faction: 'orks', ko: '오크 놉', hp: 150, armor: 0.25, walk: 1.3, run: 4.9, charge: 6.6, melee: M(60, 42, 26, 0.55, 0.72, 2.8, 2.1), scale: 1.14, role: 'leader', aura: 22 },
   ork_warboss: { id: 'ork_warboss', faction: 'orks', ko: '오크 워보스', hp: 700, armor: 0.5, walk: 1.25, run: 4.7, charge: 6.4, pistol: 'kombi', melee: M(80, 62, 55, 0.6, 0.6, 6.0, 2.6), scale: 1.32, role: 'boss', aura: 55 },
+  // ---- heroes: one model each. Primarch-scale stats are deliberate: they are meant to carve through mobs.
+  calgar: { id: 'calgar', faction: 'marines', ko: '마르네우스 칼가', hp: 1400, armor: 0.9, walk: 1.3, run: 4.6, charge: 6.2, weapon: 'gauntlets_ultramar', melee: M(98, 88, 95, 0.85, 0.85, 7, 2.4), scale: 1.22, role: 'boss', aura: 70, cleave: 2 },
+  titus: { id: 'titus', faction: 'marines', ko: '데메트리안 타이투스', hp: 750, armor: 0.88, walk: 1.3, run: 4.7, charge: 6.4, weapon: 'bolt_rifle', melee: M(90, 80, 70, 0.7, 1.0, 4.5, 2.0), scale: 1.12, role: 'boss', aura: 45, cleave: 1 },
+  chairon: { id: 'chairon', faction: 'marines', ko: '카이론', hp: 680, armor: 0.88, walk: 1.25, run: 4.5, charge: 6.2, weapon: 'heavy_bolt_rifle', melee: M(84, 80, 60, 0.6, 0.95, 4.5, 2.0), scale: 1.12, role: 'boss', aura: 40, cleave: 1 },
+  gadriel: { id: 'gadriel', faction: 'marines', ko: '가드리엘', hp: 650, armor: 0.87, walk: 1.3, run: 4.7, charge: 6.4, weapon: 'auto_bolt_rifle', melee: M(82, 76, 55, 0.55, 1.0, 4.5, 2.0), scale: 1.12, role: 'boss', aura: 40, cleave: 1 },
+  guilliman: { id: 'guilliman', faction: 'marines', ko: '로부트 길리먼', hp: 4200, armor: 0.94, walk: 1.5, run: 5.2, charge: 7.0, weapon: 'hand_of_dominion', melee: M(140, 120, 180, 1.0, 1.0, 16, 3.6), scale: 1.75, role: 'boss', aura: 110, cleave: 4 },
+  emperor: { id: 'emperor', faction: 'marines', ko: '인류의 황제', hp: 9000, armor: 0.96, walk: 1.5, run: 5.4, charge: 7.2, weapon: 'psychic_lance', melee: M(180, 160, 300, 1.0, 1.25, 24, 4.2), scale: 1.95, role: 'boss', aura: 160, cleave: 6 },
 };
 
 export type FormationId = 'line' | 'column' | 'loose' | 'defensive';
-export type AbilityId = 'bolter_drill' | 'volley' | 'bayonet' | 'waaagh' | 'take_aim';
+export type AbilityId = 'bolter_drill' | 'volley' | 'bayonet' | 'waaagh' | 'take_aim' | 'chapter_master' | 'fury' | 'primarch' | 'emperor_light';
 
 export interface UnitTemplate {
   id: string; faction: FactionId; ko: string; short: string;
@@ -114,6 +131,8 @@ export interface UnitTemplate {
   ability?: AbilityId;
   icon: string;                   // short glyph for unit cards
   desc: string;
+  /** single-model hero: at most one per side in custom battles */
+  hero?: boolean;
 }
 
 export const UNITS: Record<string, UnitTemplate> = {
@@ -129,6 +148,12 @@ export const UNITS: Record<string, UnitTemplate> = {
   boyz: { id: 'boyz', faction: 'orks', ko: '오크 보이즈 몹', short: '보이즈', members: [['ork_nob', 1], ['ork_boy', 39]], formation: 'loose', spacing: 1.45, morale: 78, ability: 'waaagh', icon: '☠', desc: '거대한 무리로 돌격해 적을 짓밟는다.' },
   boyz_small: { id: 'boyz_small', faction: 'orks', ko: '오크 보이즈', short: '보이즈', members: [['ork_nob', 1], ['ork_boy', 19]], formation: 'loose', spacing: 1.45, morale: 74, ability: 'waaagh', icon: '☠', desc: '돌격 보이즈.' },
   shootas: { id: 'shootas', faction: 'orks', ko: '슈타 보이즈', short: '슈타', members: [['ork_nob', 1], ['ork_shoota', 29]], formation: 'loose', spacing: 1.5, morale: 72, ability: 'waaagh', icon: '✸', desc: '시끄럽고 부정확하지만 탄막이 많다.' },
+  calgar: { id: 'calgar', faction: 'marines', ko: '마르네우스 칼가', short: '칼가', members: [['calgar', 1]], formation: 'line', spacing: 2, morale: 100, fearless: true, ability: 'chapter_master', icon: '♔', hero: true, desc: '울트라마린 챕터 마스터. 울트라마의 건틀릿(쌍 볼터·파워 피스트)으로 싸우며 주변 아군을 지휘한다.' },
+  titus: { id: 'titus', faction: 'marines', ko: '데메트리안 타이투스', short: '타이투스', members: [['titus', 1]], formation: 'line', spacing: 2, morale: 100, fearless: true, ability: 'fury', icon: '♘', hero: true, desc: '울트라마린 부관. 볼트 라이플과 체인소드, 분노를 터뜨리면 체력을 회복하며 근접전에서 압도한다.' },
+  chairon: { id: 'chairon', faction: 'marines', ko: '카이론', short: '카이론', members: [['chairon', 1]], formation: 'line', spacing: 2, morale: 100, fearless: true, ability: 'bolter_drill', icon: '♖', hero: true, desc: '타이투스의 노련한 전우. 헤비 볼트 라이플로 정확하고 묵직한 사격을 한다.' },
+  gadriel: { id: 'gadriel', faction: 'marines', ko: '가드리엘', short: '가드리엘', members: [['gadriel', 1]], formation: 'line', spacing: 2, morale: 100, fearless: true, ability: 'bolter_drill', icon: '♗', hero: true, desc: '타이투스 분대의 프라이머리스 형제. 오토 볼트 라이플의 빠른 연사로 적을 제압한다.' },
+  guilliman: { id: 'guilliman', faction: 'marines', ko: '로부트 길리먼', short: '길리먼', members: [['guilliman', 1]], formation: 'line', spacing: 3, morale: 100, fearless: true, ability: 'primarch', icon: '♕', hero: true, desc: '울트라마린의 프라이마크, 제국의 섭정. 황제의 검과 지배의 손으로 적 무리를 베어 넘기고 전군의 사기를 끌어올린다.' },
+  emperor: { id: 'emperor', faction: 'marines', ko: '인류의 황제', short: '황제', members: [['emperor', 1]], formation: 'line', spacing: 3, morale: 100, fearless: true, ability: 'emperor_light', icon: '☀', hero: true, desc: '테라의 황금 옥좌의 주인. 사이킥 창과 불타는 검, 황제의 빛으로 주변의 적을 쓸어버린다.' },
   nobz: { id: 'nobz', faction: 'orks', ko: '워보스와 놉즈', short: '워보스', members: [['ork_warboss', 1], ['ork_nob', 9]], formation: 'loose', spacing: 1.9, morale: 96, ability: 'waaagh', icon: '♛', desc: '워보스와 근위 놉즈. 주변 오크의 사기를 크게 올린다.' },
 };
 
@@ -145,7 +170,16 @@ export const ABILITIES: Record<AbilityId, { ko: string; dur: number; cd: number;
   bayonet: { ko: '총검 돌격', dur: 15, cd: 50, desc: '15초간 근접 공격 +25, 돌격 속도 +20%, 사기 고정' },
   waaagh: { ko: '와아아그!', dur: 15, cd: 70, desc: '주변 오크 15초간 이동 +25%, 근접 피해 +20%, 사기 +30' },
   take_aim: { ko: '조준하라!', dur: 15, cd: 50, desc: '주변 40m 아군 15초간 명중 +15%, 사기 +15' },
+  chapter_master: { ko: '챕터 마스터의 명령', dur: 15, cd: 50, desc: '주변 60m 아군 15초간 명중 +15%, 사기 +25' },
+  fury: { ko: '분노', dur: 12, cd: 60, desc: '12초간 근접 피해 +50%, 받는 피해 -50%, 즉시 체력 25% 회복' },
+  primarch: { ko: '프라이마크의 위엄', dur: 20, cd: 60, desc: '주변 80m 아군 20초간 명중 +15%, 근접 공격 +15, 사기 최대 · 길리먼 체력 15% 회복' },
+  emperor_light: { ko: '황제의 빛', dur: 2, cd: 45, desc: '주변 22m 적에게 사이킥 폭발(피해·넘어뜨림), 60m 안 적 사기 -35, 아군 사기 최대' },
 };
+
+/** Hero units appear in the custom battle roster only when their models are installed (or with ?heroes for testing). */
+export const HERO_UNITS = Object.values(UNITS).filter((t) => t.hero).map((t) => t.id);
+/** Test-only stand-in models for heroes whose downloaded models are not fitted yet (dev server ?heroes and headless tests only; never in the public build). */
+export const HERO_PREVIEW_VARIANT: Record<string, string> = { calgar: 'marine_sergeant', titus: 'marine_sergeant', chairon: 'marine', gadriel: 'marine', guilliman: 'marine_sergeant', emperor: 'marine_sergeant' };
 
 export interface Deploy { unit: string; x: number; z: number; yaw?: number }
 export interface Scenario {
@@ -153,7 +187,7 @@ export interface Scenario {
   player: FactionId[];     // factions on the player's side (side 0)
   enemy: FactionId[];
   side0: Deploy[]; side1: Deploy[];
-  map: 'ruins' | 'trenches';
+  map: MapType;
   /** off-map support for the player's side: air strikes and drop-pod reinforcements (one tactical squad each) */
   support?: { air?: number; pods?: number };
 }

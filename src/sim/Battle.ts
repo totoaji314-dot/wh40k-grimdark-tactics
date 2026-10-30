@@ -78,7 +78,7 @@ export interface Unit {
   killLog: number[];
   abilityCd: number;
   abilityT: number;
-  buffs: { waaagh: number; aim: number };
+  buffs: { waaagh: number; aim: number; primarch: number };
   attackedRear: number;
   maxRange: number;
   meleeOnly: boolean;
@@ -116,7 +116,7 @@ export type BattleEvent =
 
 const SPATIAL = 3; // spatial hash cell (m)
 /** Bursts per magazine before a reload animation. */
-const MAG_BURSTS: Record<string, number> = { bolter: 6, heavy_bolter: 4, plasma: 5, lasgun: 10, heavy_stubber: 4, shoota: 5, slugga: 6, bolt_pistol: 7, laspistol: 10, kombi: 5 };
+const MAG_BURSTS: Record<string, number> = { bolter: 6, heavy_bolter: 4, plasma: 5, lasgun: 10, heavy_stubber: 4, shoota: 5, slugga: 6, bolt_pistol: 7, laspistol: 10, kombi: 5, bolt_rifle: 7, heavy_bolt_rifle: 6, auto_bolt_rifle: 5, gauntlets_ultramar: 6, hand_of_dominion: 8, psychic_lance: 99 };
 const reloadAt = new WeakMap<Soldier, number>();
 /** soldiers lying on the ground after a knockdown (they play 'getup' when the fall finishes) */
 const knocked = new WeakMap<Soldier, number>(); // value: battle time when the soldier hits the ground
@@ -130,7 +130,7 @@ export const MELEE_SCALE = 0.5;
 /** a unit that fights hand to hand: no ranged weapons, or switched to melee mode */
 export const melee = (u: { meleeOnly: boolean; meleeMode: boolean }) => u.meleeOnly || u.meleeMode;
 /** Most enemies that can press one soldier at once, by body mass: a guardsman 2, an ork 3, a marine or nob 4, a warboss 6. */
-export const meleeCap = (o: { def: { melee: { mass: number } } }) => { const m = o.def.melee.mass; return m >= 5 ? 6 : m >= 2.5 ? 4 : m >= 1.5 ? 3 : 2; };
+export const meleeCap = (o: { def: { melee: { mass: number } } }) => { const m = o.def.melee.mass; return m >= 12 ? 8 : m >= 5 ? 6 : m >= 2.5 ? 4 : m >= 1.5 ? 3 : 2; };
 
 // ============================================================================ battle
 export class Battle {
@@ -190,7 +190,7 @@ export class Battle {
       formation: tpl.formation, files: 0, spacing: tpl.spacing, x: px, z: pz, yaw,
       order: { type: 'idle' }, path: [], pathI: 0, repathT: 0, run: false, fireAtWill: true, target: null, charging: false,
       morale: tpl.morale, mstate: 'steady', routs: 0, routT: 0, suppression: 0, fatigue: 0, inMelee: false,
-      kills: 0, losses: 0, lossLog: [], killLog: [], abilityCd: 0, abilityT: 0, buffs: { waaagh: 0, aim: 0 }, attackedRear: 0,
+      kills: 0, losses: 0, lossLog: [], killLog: [], abilityCd: 0, abilityT: 0, buffs: { waaagh: 0, aim: 0, primarch: 0 }, attackedRear: 0,
       maxRange: 0, meleeOnly: true, meleeMode: false, guard: false, skirmish: false, skirmT: 0, moving: false, selected: false, label: tpl.short, vehicle: false,
     };
     const defs: SoldierDef[] = [];
@@ -306,6 +306,25 @@ export class Battle {
         v.morale = Math.min(100, v.morale + (id === 'waaagh' ? 30 : 15));
       }
     }
+    if (id === 'chapter_master' || id === 'primarch') {
+      const R = id === 'primarch' ? 80 : 60;
+      for (const v of this.units) if (v.side === u.side && Math.hypot(v.x - u.x, v.z - u.z) < R) {
+        v.buffs.aim = a.dur;
+        if (id === 'primarch') { v.buffs.primarch = a.dur; v.morale = 100; } else v.morale = Math.min(100, v.morale + 25);
+      }
+    }
+    const L = u.leader?.alive ? u.leader : null;
+    if (L && id === 'fury') L.hp = Math.min(L.maxHp, L.hp + L.maxHp * 0.25);
+    if (L && id === 'primarch') L.hp = Math.min(L.maxHp, L.hp + L.maxHp * 0.15);
+    if (L && id === 'emperor_light') {
+      // a psychic shockwave around the Emperor: hurts and throws down everything close, breaks the nerve of the rest
+      this.blast(L.x, L.z, 22, 160, 1.0, u.side, 0.8, 0xffe08a);
+      for (const v of this.units) {
+        const d = Math.hypot(v.x - L.x, v.z - L.z);
+        if (d > 60) continue;
+        if (v.side === u.side) v.morale = 100; else v.morale = Math.max(0, v.morale - 35);
+      }
+    }
     if (u.leader?.alive) play(u.leader.anim, 'command', 1, 0.15, true);
     this.events.push({ type: 'ability', u, id });
     return true;
@@ -409,6 +428,7 @@ export class Battle {
     u.abilityT = Math.max(0, u.abilityT - dt);
     u.buffs.waaagh = Math.max(0, u.buffs.waaagh - dt);
     u.buffs.aim = Math.max(0, u.buffs.aim - dt);
+    u.buffs.primarch = Math.max(0, u.buffs.primarch - dt);
     u.suppression = Math.max(0, u.suppression - dt * (u.inMelee ? 0.3 : 0.1));
     u.inMelee = alive.some((s) => s.state === 'melee' || s.foe);
     const running = u.run || u.charging || u.mstate === 'routing';
@@ -895,7 +915,7 @@ export class Battle {
       tu.suppression = Math.min(1, tu.suppression + sh.w.suppress * (sh.hit ? 1.5 : 1) * resist);
       if (sh.w.splash) {
         const R = sh.w.splash;
-        this.events.push({ type: 'explosion', x: sh.tx, y: sh.ty, z: sh.tz, r: R, color: sh.w.tracer === 'shell' ? 0xff8a30 : undefined });
+        this.events.push({ type: 'explosion', x: sh.tx, y: sh.ty, z: sh.tz, r: R, color: sh.w.tracer === 'shell' ? 0xff8a30 : sh.w.tracer === 'psy' ? 0xffe08a : undefined });
         this.near(sh.tx, sh.tz, R, (v) => {
           if (v.side === sh.from.side || !v.alive || v === o) return;
           const dd = Math.hypot(v.x - sh.tx, v.z - sh.tz);
@@ -920,6 +940,7 @@ export class Battle {
       return;
     }
     const save = Math.max(0, Math.min(0.95, o.def.armor - ap));
+    if (o.unit.abilityT > 0 && o.unit.tpl.ability === 'fury') dmg *= 0.5;
     o.hp -= dmg * (1 - save);
     if (o.hp <= 0) this.kill(o, by);
     else if (dmg * (1 - save) > o.maxHp * 0.35 && o.hitT <= 0 && !knocked.has(o)) {
@@ -1160,6 +1181,8 @@ export class Battle {
     if (s.chargeT > 0) { atk += 18; mult *= u.faction === 'orks' ? 1.3 : 1.2; }
     if (u.buffs.waaagh > 0) mult *= 1.2;
     if (u.abilityT > 0 && u.tpl.ability === 'bayonet') { atk += 25; mult *= 1.25; }
+    if (u.abilityT > 0 && u.tpl.ability === 'fury') mult *= 1.5;
+    if (u.buffs.primarch > 0) atk += 15;
     if (u.mstate === 'wavering') atk -= 10;
     let def = f.def.melee.def - f.unit.fatigue * 10;
     if (f.unit.formation === 'defensive') def += 12;
@@ -1178,7 +1201,12 @@ export class Battle {
     if (hit) {
       // against a tank infantry use grenades and charges clamped to the hull: better penetration
       this.damage(f, s.def.melee.dmg * mult * MELEE_SCALE * (0.85 + this.rnd() * 0.3), s.def.melee.ap + (f.def.vehicle ? 0.25 : 0), s);
-      if ((s.def.role === 'boss' && this.rnd() < 0.5) || (s.def.melee.mass >= 2.8 && s.def.role !== 'boss' && this.rnd() < 0.25)) {
+      if (s.def.cleave) {
+        // heroes sweep through several foes with every blow
+        const extra: Soldier[] = [];
+        this.near(s.x, s.z, s.def.melee.reach + 0.8, (o) => { if (extra.length < s.def.cleave! && o !== f && o.alive && o.side !== s.side) extra.push(o); });
+        for (const o of extra) this.damage(o, s.def.melee.dmg * mult * MELEE_SCALE * 0.6, s.def.melee.ap, s);
+      } else if ((s.def.role === 'boss' && this.rnd() < 0.5) || (s.def.melee.mass >= 2.8 && s.def.role !== 'boss' && this.rnd() < 0.25)) {
         // big hitters cleave a second victim
         let other: Soldier | null = null;
         this.near(s.x, s.z, s.def.melee.reach + 0.5, (o) => { if (!other && o !== f && o.alive && o.side !== s.side) other = o; });
@@ -1242,6 +1270,7 @@ export class Battle {
     for (const v of this.units) if (v.side !== u.side && v.mstate === 'routing' && Math.hypot(v.x - u.x, v.z - u.z) < 50) m += 5;
     if (u.buffs.waaagh > 0) m += 30;
     if (u.buffs.aim > 0) m += 15;
+    if (u.buffs.primarch > 0) m = 100;
     if (u.abilityT > 0 && u.tpl.ability === 'bayonet') m = Math.max(m, 90);
     m = Math.max(0, Math.min(100, m));
     const rate = m < u.morale ? 9 : 4;

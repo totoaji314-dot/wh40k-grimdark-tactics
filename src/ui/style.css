@@ -124,6 +124,8 @@ button.btn.big { padding: 14px 22px; font-size: 1.1em; }
 .custom .ros h3 { margin: 4px 0 8px; color: var(--brass); font-family: Georgia, serif; font-size: 16px; }
 .custom .ros-row { display: grid; grid-template-columns: 28px 1fr 34px 30px 34px; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #ffffff10; }
 .custom .ros-row .ic { font-size: 18px; text-align: center; }
+.custom [hidden] { display: none !important; }
+.custom .ros-heroes h4 { margin: 10px 0 4px; color: var(--brass); font-family: Georgia, serif; font-size: 14px; }
 .custom .ros-row .nm small { display: block; color: var(--dim); font-size: 11px; }
 .custom .ros-row b, .custom .row b { text-align: center; min-width: 22px; display: inline-block; }
 button.btn.sm { min-height: 30px; padding: 2px 8px; }

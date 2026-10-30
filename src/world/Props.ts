@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import type { BattleMap, Placement } from './MapGen';
+import { BASTION, TERRA_FOOT, type BattleMap, type Placement } from './MapGen';
 import { mulberry32 } from './noise';
 
 /**
@@ -14,15 +14,20 @@ export interface PropMeta { size: [number, number, number]; min: [number, number
 /** kit pieces whose procedural geometry the props replace */
 export const PROP_PIECES = new Set(['crates', 'barrels', 'barricade']);
 
+/** kit pieces the Holy Terra set draws instead (the new palace pieces have no kit geometry at all) */
+export const TERRA_PIECES = new Set([...Object.keys(TERRA_FOOT), 'lamp']);
+
 /** rz / rx: roll about the prop's own centre (barrel knocked over / tyre lying flat) */
 type Item = [id: string, x: number, y: number, z: number, yaw: number, scale?: number, rz?: number, rx?: number];
+type Parts = Map<string, { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial }[]>;
 
-export async function buildProps(base: string, map: BattleMap, density: number, castShadow: boolean) {
+/** Load one prop set (<name>.glb + <name>.json): every prop's meshes, centred on the origin with the base at y = 0. */
+async function loadSet(base: string, name: string): Promise<{ parts: Parts; meta: Record<string, PropMeta> }> {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   const [gltf, meta] = await Promise.all([
-    loader.loadAsync(base + 'props.glb'),
-    fetch(base + 'props.json').then((r) => r.json() as Promise<Record<string, PropMeta>>),
+    loader.loadAsync(base + name + '.glb'),
+    fetch(base + name + '.json').then((r) => r.json() as Promise<Record<string, PropMeta>>),
   ]);
   gltf.scene.updateMatrixWorld(true);
   // prop id -> its meshes with geometry moved so the prop stands centred on the origin, base at y = 0
@@ -38,6 +43,14 @@ export async function buildProps(base: string, map: BattleMap, density: number, 
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const geo = mesh.geometry.clone();
+      // de-quantise first: transforming int16 normalised positions in place clamps them to +-1 m (big props collapse)
+      for (const k of Object.keys(geo.attributes)) {
+        const at = geo.attributes[k] as THREE.BufferAttribute;
+        if (at.array instanceof Float32Array && !at.normalized) continue;
+        const fl = new Float32Array(at.count * at.itemSize);
+        for (let i = 0; i < at.count; i++) for (let j = 0; j < at.itemSize; j++) fl[i * at.itemSize + j] = at.getComponent(i, j);
+        geo.setAttribute(k, new THREE.BufferAttribute(fl, at.itemSize));
+      }
       geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(off, new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld)));
       const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
       // settle the clean scans into the dusty dusk palette of the battlefield: darker, warmer, about half as saturated
@@ -51,7 +64,54 @@ export async function buildProps(base: string, map: BattleMap, density: number, 
     });
     parts.set(root.name, list);
   }
+  return { parts, meta };
+}
 
+/** One instanced mesh per prop part. */
+function instance(items: Item[], parts: Parts, meta: Record<string, PropMeta>, castShadow: boolean, name: string) {
+  const byId = new Map<string, Item[]>();
+  for (const it of items) { if (!byId.has(it[0])) byId.set(it[0], []); byId.get(it[0])!.push(it); }
+  const group = new THREE.Group();
+  group.name = name;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3();
+  const e = new THREE.Euler(), sc = new THREE.Vector3(), centre = new THREE.Matrix4(), back = new THREE.Matrix4(), roll = new THREE.Matrix4();
+  let tris = 0;
+  for (const [id, list] of byId) {
+    const pl = parts.get(id);
+    if (!pl) continue;
+    const half = meta[id].size[1] / 2;
+    for (const { geo, mat } of pl) {
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((it, i) => {
+        const s = it[5] ?? 1;
+        e.set(0, it[4], 0); q.setFromEuler(e);
+        m4.compose(v.set(it[1], it[2], it[3]), q, sc.set(s, s, s));
+        if (it[6] || it[7]) {
+          centre.makeTranslation(0, half, 0); back.makeTranslation(0, -half, 0);
+          m4.multiply(centre).multiply(roll.makeRotationFromEuler(e.set(it[7] ?? 0, 0, it[6] ?? 0))).multiply(back);
+        }
+        mesh.setMatrixAt(i, m4);
+      });
+      mesh.castShadow = castShadow; mesh.receiveShadow = true;
+      mesh.name = 'prop_' + id;
+      mesh.computeBoundingSphere();
+      group.add(mesh);
+      tris += (geo.index ? geo.index.count : geo.attributes.position.count) / 3 * list.length;
+    }
+  }
+  return { group, tris };
+}
+
+/** Kit piece -> world: same rotation sense as the kit (rotation about +Y). */
+function toWorld(map: BattleMap, p: Placement, it: Item): Item {
+  const c = Math.cos(p.rot), s = Math.sin(p.rot);
+  const x = p.x + it[1] * c + it[3] * s, z = p.z - it[1] * s + it[3] * c;
+  const y = (Number.isFinite(p.y) ? p.y : map.heightAt(p.x, p.z)) + it[2];
+  return [it[0], x, y, z, p.rot + it[4], it[5], it[6], it[7]];
+}
+
+export async function buildProps(base: string, map: BattleMap, density: number, castShadow: boolean) {
+  const { parts, meta } = await loadSet(base, 'props');
   const rnd = mulberry32(7171);
   const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
   const jit = (a: number) => (rnd() - 0.5) * a;
@@ -86,15 +146,7 @@ export async function buildProps(base: string, map: BattleMap, density: number, 
   };
 
   const items: Item[] = [];
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3();
-  const world = (p: Placement, it: Item): Item => {
-    const c = Math.cos(p.rot), s = Math.sin(p.rot);
-    // same rotation sense as the kit (rotation about +Y)
-    const x = p.x + it[1] * c + it[3] * s, z = p.z - it[1] * s + it[3] * c;
-    const y = (Number.isFinite(p.y) ? p.y : map.heightAt(p.x, p.z)) + it[2];
-    return [it[0], x, y, z, p.rot + it[4], it[5], it[6], it[7]];
-  };
-  for (const p of map.placements) if (PROP_PIECES.has(p.piece)) for (const it of layout(p.piece)) items.push(world(p, it));
+  for (const p of map.placements) if (PROP_PIECES.has(p.piece)) for (const it of layout(p.piece)) items.push(toWorld(map, p, it));
 
   // junk dropped around defences and wrecks: jerrycans, tyres, wheel rims, ammo cases
   const free = (x: number, z: number) => !map.isBlocked(x, z) && !map.isSolid(x, z, 0.5) && !map.inTrench(x, z);
@@ -117,35 +169,46 @@ export async function buildProps(base: string, map: BattleMap, density: number, 
     }
   }
 
-  // one instanced mesh per prop part
-  const byId = new Map<string, Item[]>();
-  for (const it of items) { if (!byId.has(it[0])) byId.set(it[0], []); byId.get(it[0])!.push(it); }
-  const group = new THREE.Group();
-  group.name = 'props';
-  const e = new THREE.Euler(), sc = new THREE.Vector3(), centre = new THREE.Matrix4(), back = new THREE.Matrix4(), roll = new THREE.Matrix4();
-  let tris = 0;
-  for (const [id, list] of byId) {
-    const pl = parts.get(id);
-    if (!pl) continue;
-    const half = meta[id].size[1] / 2;
-    for (const { geo, mat } of pl) {
-      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
-      list.forEach((it, i) => {
-        const s = it[5] ?? 1;
-        e.set(0, it[4], 0); q.setFromEuler(e);
-        m4.compose(v.set(it[1], it[2], it[3]), q, sc.set(s, s, s));
-        if (it[6] || it[7]) {
-          centre.makeTranslation(0, half, 0); back.makeTranslation(0, -half, 0);
-          m4.multiply(centre).multiply(roll.makeRotationFromEuler(e.set(it[7] ?? 0, 0, it[6] ?? 0))).multiply(back);
-        }
-        mesh.setMatrixAt(i, m4);
-      });
-      mesh.castShadow = castShadow; mesh.receiveShadow = true;
-      mesh.name = 'prop_' + id;
-      mesh.computeBoundingSphere();
-      group.add(mesh);
-      tris += (geo.index ? geo.index.count : geo.attributes.position.count) / 3 * list.length;
+  const { group, tris } = instance(items, parts, meta, castShadow, 'props');
+  return { group, tris, count: items.length };
+}
+
+/**
+ * Holy Terra palace district from downloaded CC0 models (terra.glb): fort-kit bastion walls and round towers, the open
+ * iron gate with lion heads over it, postern doors, saints and an equestrian primarch, street lamps and searchlights.
+ */
+export async function buildTerraProps(base: string, map: BattleMap, castShadow: boolean) {
+  const { parts, meta } = await loadSet(base, 'terra');
+  // the horse scan is white porcelain: cast it in dark bronze on a stone plinth to sit among the palace monuments
+  for (const { mat } of parts.get('horse_statue_01') ?? []) {
+    if (mat.name.endsWith('_base')) mat.color.setRGB(0.34, 0.31, 0.28);
+    else { mat.color.setRGB(0.2, 0.15, 0.1); mat.metalness = 0.35; mat.roughness = 0.62; }
+  }
+  const S = BASTION.scale;
+  const items: Item[] = [];
+  const ground = (x: number, z: number) => map.heightAt(x, z);
+  for (const p of map.placements) {
+    switch (p.piece) {
+      // the fort wall runs along its local z: turn it to lie along the footprint's x
+      case 'bastion': items.push(toWorld(map, p, ['fort_wall', 0, -0.2, 0, Math.PI / 2, S])); break;
+      case 'bastion_tower': items.push(toWorld(map, p, ['fort_tower', 0, -0.2, 0, 0, S])); break;
+      case 'statue': items.push(toWorld(map, p, ['gothic_statue', 0, 0, 0, 0, 2.55])); break;
+      case 'equestrian': items.push(toWorld(map, p, ['horse_statue_01', 0, 0, 0, 0, 30])); break;
+      case 'lamp': items.push(toWorld(map, p, ['street_lamp_01', 0, 0, 0, 0, 1.5])); break;
     }
   }
+  // the gate: two iron leaves swung open into the palace, hinged on the gate towers' fronts
+  const zg = BASTION.z, gx = BASTION.gate, leaf = meta.large_iron_gate.size[0] * 3;
+  for (const sg of [-1, 1]) items.push(['large_iron_gate', sg * (gx - 0.3), ground(sg * gx, zg + leaf / 2) - 0.1, zg + leaf / 2, Math.PI / 2, 3]);
+  // lion heads over the gate on the outer faces of the gate towers; postern doors on their inner faces
+  const R = 15.838 * S / 2, tx = gx + R;
+  for (const sg of [-1, 1]) {
+    items.push(['lion_head', sg * tx, ground(sg * tx, zg - R) + 7.2, zg - R - 0.5, Math.PI, 10]);
+    items.push(['large_castle_door', sg * tx, ground(sg * tx, zg + R) - 0.05, zg + R - 0.15, 0, 1.45]);
+  }
+  // searchlights on the bunkers and along the defence line, all trained north at the enemy
+  for (const p of map.placements) if (p.piece === 'bunker') items.push(['portable_searchlight', p.x + 2, p.y + 3.4, p.z, Math.PI + 0.3 * Math.sign(p.x), 6]);
+  for (const x of [-96, -40, 40, 96]) items.push(['portable_searchlight', x, ground(x, 104), 104, Math.PI + x / 400, 6]);
+  const { group, tris } = instance(items, parts, meta, castShadow, 'terra');
   return { group, tris, count: items.length };
 }

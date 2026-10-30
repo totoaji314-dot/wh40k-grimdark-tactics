@@ -11,7 +11,7 @@ import { VehicleViews, type VehicleMeta } from './render/Vehicles';
 import { Cinematic } from './core/Cinematic';
 import { localFactionOverrides } from './render/localAssets';
 import { buildScatter } from './world/Scatter';
-import { buildProps, PROP_PIECES } from './world/Props';
+import { buildProps, buildTerraProps, PROP_PIECES, TERRA_PIECES } from './world/Props';
 import { buildSky } from './render/Sky';
 import { UnitLibrary, heroLight } from './render/UnitLibrary';
 import { UnitRenderer, type Figure } from './render/UnitRenderer';
@@ -20,7 +20,7 @@ import { CameraRig } from './core/CameraRig';
 import { Battle, type Unit, type Soldier } from './sim/Battle';
 import { Commander } from './sim/AI';
 import { stepAnim, type ClipTable } from './sim/anim';
-import { SOLDIERS, UNITS, FACTIONS, ABILITIES, type Scenario, type FormationId, type FactionId } from './sim/data';
+import { SOLDIERS, UNITS, FACTIONS, ABILITIES, HERO_PREVIEW_VARIANT, type Scenario, type FormationId, type FactionId } from './sim/data';
 import { Hud } from './ui/Hud';
 import type { Audio } from './core/Audio';
 import { PRESETS, type QualityLevel, type Settings } from './core/Settings';
@@ -133,6 +133,8 @@ export class Game {
       await this.lib.loadFaction(f, P.halfUnitTex, (id) => progress(0.15 + (fi / factions.size) * 0.4, `${FACTIONS[f].ko} 모델: ${id}`));
       fi++;
     }
+    // ?heroes (dev server only): heroes without a fitted model borrow a marine model so their rules can be tested in the browser
+    if (import.meta.env.DEV && new URLSearchParams(location.search).has('heroes')) for (const [id, alt] of Object.entries(HERO_PREVIEW_VARIANT)) if (!this.lib.variants.has(id) && this.lib.variants.has(alt)) this.lib.variants.set(id, this.lib.variants.get(alt)!);
     const clips: ClipTable = {};
     for (const [id, v] of this.lib.variants) { clips[id] = {}; for (const [c, m] of Object.entries(v.clips)) clips[id][c] = { dur: m.dur, loop: m.loop, speed: m.speed, event: m.event }; }
     progress(0.58, '전투 준비 중');
@@ -164,7 +166,11 @@ export class Game {
     // ?noprops keeps the old kit pieces (A/B performance checks)
     const props = new URLSearchParams(location.search).has('noprops') ? null : await buildProps(BASE + 'assets/props/', this.map, density, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[props] not loaded', err); return null; });
     if (props) { this.scene.add(props.group); console.info('[props]', props.count, 'props,', Math.round(props.tris), 'triangles'); }
-    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb'], props ? PROP_PIECES : new Set());
+    // Holy Terra: the palace bastion, gate, statues and lamps come from their own downloaded model set
+    const terra = this.map.type !== 'terra' || new URLSearchParams(location.search).has('noprops') ? null : await buildTerraProps(BASE + 'assets/props/', this.map, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[terra] not loaded', err); return null; });
+    if (terra) { this.scene.add(terra.group); console.info('[terra]', terra.count, 'pieces,', Math.round(terra.tris), 'triangles'); }
+    const skip = new Set([...(props ? PROP_PIECES : []), ...(terra ? TERRA_PIECES : [])]);
+    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb'], skip);
     this.scene.add(env.group);
     this.makePiece = env.makePiece;
     console.info('[env] triangles', env.tris, 'backdrop blocks', this.map.backdrop.length);
@@ -452,7 +458,7 @@ export class Game {
       let x = 0, z = 0, y = -1e9;
       for (const s of al) { x += s.x; z += s.z; y = Math.max(y, s.y); }
       x /= al.length; z /= al.length;
-      const top = Math.max(...al.map((s) => s.def.vehicle ? s.def.vehicle.height : this.lib.variants.get(s.def.id)!.height * s.def.scale));
+      const top = Math.max(...al.map((s) => s.def.vehicle ? s.def.vehicle.height : (this.lib.variants.get(s.def.id)?.height ?? 2) * s.def.scale));
       this.bannerV.set(x, y + top + 1.2 + this.rig.dist * 0.02, z).project(this.camera);
       const vis = this.bannerV.z < 1 && Math.abs(this.bannerV.x) < 1.1 && Math.abs(this.bannerV.y) < 1.1;
       this.hud.banner(u, (this.bannerV.x * 0.5 + 0.5) * w, (-this.bannerV.y * 0.5 + 0.5) * h, vis, this.selected.has(u));
@@ -550,6 +556,8 @@ export class Game {
     this.hud.toast(`${u.name}: ${ABILITIES[id].ko}`, 2.2);
     if (id === 'waaagh') { this.audio.play('waaagh', u.x, u.z, 1.2); this.rig.shake = 0.6; }
     else if (id === 'bayonet') this.audio.play('whistle', u.x, u.z, 1);
+    else if (id === 'fury') { this.audio.play('chainsword', u.x, u.z, 1.1); this.rig.shake = Math.max(this.rig.shake, 0.3); }
+    else if (id === 'emperor_light') { this.audio.play('lascannon', u.x, u.z, 1.3); this.rig.shake = Math.max(this.rig.shake, 0.9); }
     else this.audio.play('horn', u.x, u.z, 0.6);
   }
 

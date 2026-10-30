@@ -13,6 +13,8 @@ export async function loadEnvFootprints(base: string): Promise<Record<string, Fo
   return (await fetch(base + 'env.json')).json();
 }
 
+const KIT_FALLBACK: Record<string, string> = { bastion: 'wall', bastion_tower: 'watchtower', equestrian: 'monument', statue: 'monument' };
+
 /** De-quantise every attribute to plain Float32 (meshopt / quantize stores int16 positions). Must run before transforming. */
 const UV_SCALE: Record<string, number> = { stone: 3.2, ferrocrete: 3.0, roof: 2.5, sandbag: 1.4, wood: 1.6, rubble: 2.5 };
 
@@ -94,7 +96,8 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
   };
   for (const [list, byMat] of [[map.placements, near], [keep, far]] as const) for (const p of list) {
     if (skip.has(p.piece)) continue;
-    const parts = pieces.get(p.piece);
+    // Holy Terra palace pieces have no kit geometry: if their model set failed to load, stand in kit pieces so walls never go invisible
+    const parts = pieces.get(p.piece) ?? pieces.get(KIT_FALLBACK[p.piece] ?? '');
     if (!parts) continue;
     q.setFromAxisAngle(up, p.rot);
     m4.compose(v.set(p.x, p.y, p.z), q, s);

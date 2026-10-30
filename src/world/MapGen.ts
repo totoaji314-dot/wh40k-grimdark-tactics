@@ -5,6 +5,18 @@ import { fbm, mulberry32 } from './noise';
 
 export interface Footprint { w: number; d: number; cover: number; block: boolean; h: number }
 export interface Placement { piece: string; x: number; z: number; rot: number; y: number }
+export type MapType = 'ruins' | 'trenches' | 'terra';
+
+/** Holy Terra palace pieces drawn by the downloaded model set (src/world/Props.ts, terra.glb), not the environment kit.
+ *  Sizes follow the models at the scale Props.ts draws them (fort kit x1.2). */
+export const TERRA_FOOT: Record<string, Footprint> = {
+  bastion: { w: 17.48, d: 5.0, cover: 0.85, block: true, h: 10.2 },
+  bastion_tower: { w: 16.5, d: 16.5, cover: 0.6, block: true, h: 16 },
+  equestrian: { w: 5.0, d: 3.4, cover: 0.6, block: true, h: 6.6 },
+  statue: { w: 3.8, d: 4.0, cover: 0.6, block: true, h: 4.5 },
+};
+/** fort kit scale and the bastion layout numbers Props.ts needs to dress the gate */
+export const BASTION = { scale: 1.2, z: 132, gate: 13 };
 
 export const EXTENT = 440;          // terrain size (m)
 export const HALF = EXTENT / 2;
@@ -35,10 +47,11 @@ export class BattleMap {
   private solidGrid = new Map<number, number[]>();
   rnd: () => number;
 
-  constructor(public type: 'ruins' | 'trenches', public foot: Record<string, Footprint>, seed = 1234) {
-    this.rnd = mulberry32(seed + (type === 'trenches' ? 77 : 0));
+  constructor(public type: MapType, public foot: Record<string, Footprint>, seed = 1234) {
+    this.foot = { ...foot, ...TERRA_FOOT };
+    this.rnd = mulberry32(seed + (type === 'trenches' ? 77 : type === 'terra' ? 151 : 0));
     this.baseTerrain(seed);
-    if (type === 'ruins') this.layoutRuins(); else this.layoutTrenches();
+    if (type === 'ruins') this.layoutRuins(); else if (type === 'terra') this.layoutTerra(); else this.layoutTrenches();
     this.finish();
     this.layoutBackdrop(seed);
   }
@@ -59,7 +72,10 @@ export class BattleMap {
     const add = (piece: string, x: number, z: number, rot: number) => this.backdrop.push({ piece, x, z, rot, y: this.farHeight(x, z) - 0.4 });
     // landmark cathedral far beyond the enemy lines, plus a ring of hive blocks on a jittered street grid
     const cx = this.type === 'ruins' ? -95 : 110;
+    const terra = this.type === 'terra';
     add('cathedral', cx, -296, 0.04);
+    // Terra: the Imperial Palace rises behind the defenders — a wall of sanctums and spires to the south
+    if (terra) for (let x = -300; x <= 300; x += 75) add('cathedral', x + (r() - 0.5) * 12, 300 + (r() - 0.5) * 14, Math.PI / 2 + (r() - 0.5) * 0.06);
     for (let gx = -O; gx <= O; gx += STEP) for (let gz = -O; gz <= O; gz += STEP) {
       const x = gx + (r() - 0.5) * 10, z = gz + (r() - 0.5) * 10;
       const m = Math.max(Math.abs(x), Math.abs(z));
@@ -67,7 +83,10 @@ export class BattleMap {
       if (m < B || m > O || k < 0.22) continue;
       if (Math.abs(x - cx) < 40 && Math.abs(z + 296) < 50) continue;
       const depth = (m - B) / (O - B);
-      const piece = k < 0.42 ? 'hab' : k < 0.55 ? 'manufactorum' : k < 0.66 ? 'chapel' : k < 0.74 ? (depth > 0.35 ? 'smokestack' : 'watchtower') : k < 0.9 ? 'ruinrow' : 'hab';
+      if (terra && z > 255) continue; // the palace front is kept clear
+      const piece = terra
+        ? (k < 0.36 ? 'chapel' : k < 0.5 ? 'hab' : k < 0.62 ? 'watchtower' : k < 0.7 ? 'monument' : k < 0.86 ? 'ruinrow' : 'chapel')
+        : k < 0.42 ? 'hab' : k < 0.55 ? 'manufactorum' : k < 0.66 ? 'chapel' : k < 0.74 ? (depth > 0.35 ? 'smokestack' : 'watchtower') : k < 0.9 ? 'ruinrow' : 'hab';
       if (piece === 'ruinrow') {
         // a broken street front: three wall sections and pillars
         const c = Math.cos(rot), s = Math.sin(rot);
@@ -333,6 +352,70 @@ export class BattleMap {
       this.crater(x, z, 2.5 + r() * 5);
     }
     for (let k = 0; k < 8; k++) this.fires.push({ x: -120 + r() * 240, z: -120 + r() * 150, y: 0, s: 0.6 + r() });
+  }
+
+  /** Holy Terra: the approach to the Imperial Palace. A processional avenue runs north to south through a besieged
+   *  hab district, lined with statues, to the palace bastion wall and its gate; the palace sanctums stand behind it.
+   *  The defenders (side 0) hold the south. */
+  private layoutTerra() {
+    const r = this.rnd;
+    const avenue: [number, number][] = []; for (let z = -215; z <= 215; z += 10) avenue.push([0, z]);
+    this.roadLine(avenue, 14);
+    this.roadLine([[-215, 22], [-30, 22], [30, 22], [215, 22]], 10);
+    this.roadLine([[-215, -72], [215, -72]], 8);
+    this.baseH = this.height.slice();
+    // the palace bastion across the south: round towers and thick curtain walls (fort kit x1.2), open only at the gate on the avenue
+    const S = BASTION.scale, WL = 14.563 * S, TR = 15.838 * S / 2, IN = 1.6;
+    for (const sg of [-1, 1]) {
+      let x = BASTION.gate + TR;
+      this.place('bastion_tower', sg * x, BASTION.z, 0);
+      for (let stretch = 0; stretch < 2; stretch++) {
+        let a = x + TR - IN;
+        for (let k = 0; k < 3; k++) { this.place('bastion', sg * (a + WL / 2), BASTION.z, 0); a += WL; }
+        x = a - IN + TR;
+        this.place('bastion_tower', sg * x, BASTION.z, 0);
+      }
+    }
+    // palace sanctums and chapels inside the wall
+    this.place('cathedral', -78, 170, Math.PI / 2);
+    this.place('cathedral', 78, 170, Math.PI / 2);
+    this.place('chapel', -28, 156, 0); this.place('chapel', 28, 156, 0);
+    this.place('monument', 0, 164, 0);
+    // statues of the Emperor's saints and primarchs line the avenue: great monuments alternating with saints on foot
+    let alt = 0;
+    for (let z = -160; z <= 110; z += 27) {
+      if (Math.abs(z - 22) < 14 || Math.abs(z + 72) < 12) continue;
+      const piece = alt++ % 2 ? 'statue' : 'monument';
+      this.place(piece, -15, z, piece === 'statue' ? -Math.PI / 2 : 0); this.place(piece, 15, z, piece === 'statue' ? Math.PI / 2 : 0);
+    }
+    this.place('equestrian', 0, 22, 0); // the great plaza at the crossing: a primarch on horseback
+    this.place('equestrian', -30, 112, Math.PI); this.place('equestrian', 30, 112, Math.PI);   // before the gate
+    for (let z = -170; z <= 120; z += 18) { if (Math.abs(z - 22) < 10) continue; this.place('lamp', 10, z, -Math.PI / 2, false); this.place('lamp', -10, z + 9, Math.PI / 2, false); }
+    // the defenders' line in front of the wall
+    for (let x = -120; x <= 120; x += 6) {
+      if (Math.abs(x) < 12) continue;
+      const z = 100 + Math.cos(x / 36) * 2;
+      this.place(r() < 0.7 ? 'sandbags' : 'barricade', x, z, 0, false);
+    }
+    for (let x = -130; x <= 130; x += 13) if (Math.abs(x) > 14) this.place('tank_trap', x + r() * 3, 82 + r() * 4, r() * 3, false);
+    this.place('bunker', -70, 116, Math.PI); this.place('bunker', 70, 116, Math.PI);
+    this.scatter('crates', 8, -110, 110, 104, 126);
+    this.scatter('barrels', 6, -110, 110, 104, 126);
+    // the besieged hab district to the north: palace precinct blocks, siege damage
+    this.place('chapel', -58, -20, 0); this.place('chapel', 58, -28, Math.PI);
+    this.place('hab', -62, -112, 0); this.place('hab', 60, -118, Math.PI / 2);
+    this.place('manufactorum', -96, 48, Math.PI / 2); this.place('hab', 96, 52, 0);
+    this.wallRow(-28, -150, -28, -86, 0.7); this.wallRow(28, -150, 28, -86, 0.7);
+    this.wallRow(-110, -50, -36, -50, 0.75); this.wallRow(36, -46, 110, -46, 0.75);
+    this.wallRow(-34, 40, -34, 70, 0.6); this.wallRow(34, 40, 34, 70, 0.6);
+    this.place('wreck', -46, 6, 1.2); this.place('wreck', 50, 64, 2.4); this.place('wreck', -8, -120, 0.4);
+    this.scatter('rubble', 18, -140, 140, -150, 60);
+    for (let k = 0; k < 22; k++) {
+      const x = -160 + r() * 320, z = -150 + r() * 200;
+      if (this.near(x, z, 6)) continue;
+      this.crater(x, z, 2.5 + r() * 4.5);
+    }
+    for (let k = 0; k < 7; k++) this.fires.push({ x: -130 + r() * 260, z: -140 + r() * 170, y: 0, s: 0.6 + r() });
   }
 
   private layoutTrenches() {

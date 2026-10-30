@@ -1,4 +1,13 @@
-import { SCENARIOS, UNITS, SOLDIERS, FACTIONS, unitSize, type Scenario , type Deploy } from '../sim/data';
+import { SCENARIOS, UNITS, SOLDIERS, FACTIONS, HERO_UNITS, unitSize, type Scenario , type Deploy, type UnitTemplate } from '../sim/data';
+
+/** Heroes whose models are installed in the marines unit set (all of them with ?heroes on the dev server, for testing their rules). */
+async function availableHeroes(): Promise<Set<string>> {
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('heroes')) return new Set(HERO_UNITS);
+  try {
+    const meta = await (await fetch(import.meta.env.BASE_URL + 'assets/units/marines.json')).json();
+    return new Set(HERO_UNITS.filter((id) => UNITS[id].members.every(([sid]) => meta.variants?.[sid])));
+  } catch { return new Set(); }
+}
 import type { Settings } from '../core/Settings';
 import { el } from './Hud';
 
@@ -66,9 +75,11 @@ export class Menu {
     s.style.flexDirection = 'column';
     const counts: [Record<string, number>, Record<string, number>] = [{ tactical: 2, devastator: 1 }, { boyz: 2, shootas: 1 }];
     let map: Scenario['map'] = 'ruins', diff = 1, air = 2, pods = 1;
-    const roster = (side: 0 | 1) => Object.values(UNITS).map((t) => `<div class="ros-row" title="${t.desc}"><span class="ic" style="color:${FACTIONS[t.faction].color}">${t.icon}</span><span class="nm">${t.ko}<small>${FACTIONS[t.faction].ko} · ${t.members.some(([id]) => SOLDIERS[id].vehicle) ? '전차 ' + unitSize(t) + '대' : unitSize(t) + '명'}</small></span><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="-1">−</button><b data-cnt="${side}-${t.id}">0</b><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="1">+</button></div>`).join('');
+    const row = (t: UnitTemplate, side: 0 | 1) => `<div class="ros-row"${t.hero ? ` data-hero="${t.id}" hidden` : ''} title="${t.desc}"><span class="ic" style="color:${FACTIONS[t.faction].color}">${t.icon}</span><span class="nm">${t.ko}<small>${FACTIONS[t.faction].ko} · ${t.members.some(([id]) => SOLDIERS[id].vehicle) ? '전차 ' + unitSize(t) + '대' : unitSize(t) + '명'}</small></span><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="-1">−</button><b data-cnt="${side}-${t.id}">0</b><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="1">+</button></div>`;
+    const roster = (side: 0 | 1) => Object.values(UNITS).filter((t) => !t.hero).map((t) => row(t, side)).join('')
+      + `<div class="ros-heroes" hidden><h4>영웅 (1인 부대, 측당 각 1명)</h4>${Object.values(UNITS).filter((t) => t.hero).map((t) => row(t, side)).join('')}</div>`;
     s.innerHTML = `<div class="title" style="max-width:1120px"><h1 style="font-size:clamp(22px,3.6vw,36px)">커스텀 전투</h1><h2>전장과 양측 군대, 지원 전력을 직접 편성합니다</h2></div>
-      <div class="row panel" style="padding:8px 12px"><span>전장</span><button class="btn on" data-map="ruins">폐허 도시</button><button class="btn" data-map="trenches">참호선</button>
+      <div class="row panel" style="padding:8px 12px"><span>전장</span><button class="btn on" data-map="ruins">폐허 도시</button><button class="btn" data-map="trenches">참호선</button><button class="btn" data-map="terra">홀리 테라 (황궁)</button>
         <span style="margin-left:10px">난이도</span><button class="btn" data-d="0">쉬움</button><button class="btn on" data-d="1">보통</button><button class="btn" data-d="2">어려움</button></div>
       <div class="ros-grid"><div class="panel ros"><h3>아군 (플레이어) <span id="tot0"></span></h3>${roster(0)}</div><div class="panel ros"><h3>적군 (AI) <span id="tot1"></span></h3>${roster(1)}</div></div>
       <div class="row panel" style="padding:8px 12px"><span>공중 지원</span><button class="btn sm" data-air="-1">−</button><b id="air"></b><button class="btn sm" data-air="1">+</button>
@@ -91,6 +102,7 @@ export class Menu {
       const total = Object.values(counts[side]).reduce((a, c) => a + c, 0);
       const next = Math.max(0, (counts[side][id] ?? 0) + Number(e.dataset.k));
       if (next > (counts[side][id] ?? 0) && total >= 24) return;
+      if (UNITS[id].hero && next > 1) return;
       counts[side][id] = next; refresh();
     }));
     s.querySelectorAll('[data-map]').forEach((b) => b.addEventListener('click', () => { map = (b as HTMLElement).dataset.map as Scenario['map']; s.querySelectorAll('[data-map]').forEach((x) => x.classList.toggle('on', x === b)); }));
@@ -100,6 +112,10 @@ export class Menu {
     s.querySelector('#cu-back')!.addEventListener('click', onBack);
     s.querySelector('#cu-go')!.addEventListener('click', () => onStart(buildCustomScenario(map, counts, air, pods), diff));
     refresh();
+    void availableHeroes().then((ok) => {
+      s.querySelectorAll<HTMLElement>('[data-hero]').forEach((r) => { r.hidden = !ok.has(r.dataset.hero!); });
+      s.querySelectorAll<HTMLElement>('.ros-heroes').forEach((h) => { h.hidden = ok.size === 0; });
+    });
   }
 
   settings(st: Settings, detected: string, onSave: (s: Settings) => void, onBack: () => void) {
