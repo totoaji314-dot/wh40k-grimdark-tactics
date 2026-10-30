@@ -161,7 +161,8 @@ export class Game {
     const density = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 0.6 : 0.3;
     const vehicleMeta: Record<string, VehicleMeta> = await (await fetch(BASE + 'assets/vehicles/vehicles.json')).json();
     // photoscanned props replace the kit's crates / barrels / barricades; if they fail to load the kit pieces stay
-    const props = await buildProps(BASE + 'assets/props/', this.map, density, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[props] not loaded', err); return null; });
+    // ?noprops keeps the old kit pieces (A/B performance checks)
+    const props = new URLSearchParams(location.search).has('noprops') ? null : await buildProps(BASE + 'assets/props/', this.map, density, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[props] not loaded', err); return null; });
     if (props) { this.scene.add(props.group); console.info('[props]', props.count, 'props,', Math.round(props.tris), 'triangles'); }
     const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb'], props ? PROP_PIECES : new Set());
     this.scene.add(env.group);
