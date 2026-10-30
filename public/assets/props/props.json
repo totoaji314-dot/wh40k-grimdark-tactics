@@ -1,0 +1,182 @@
+{
+ "Barrel_01": {
+  "size": [
+   0.563,
+   0.88,
+   0.563
+  ],
+  "min": [
+   -0.281,
+   -0.007,
+   -0.281
+  ],
+  "tris": 1400,
+  "authors": [
+   "Jorge Camacho"
+  ],
+  "source": "https://polyhaven.com/a/Barrel_01",
+  "license": "CC0"
+ },
+ "barrel_03": {
+  "size": [
+   0.634,
+   0.93,
+   0.639
+  ],
+  "min": [
+   -0.317,
+   0,
+   -0.319
+  ],
+  "tris": 1199,
+  "authors": [
+   "Serhii Khromov"
+  ],
+  "source": "https://polyhaven.com/a/barrel_03",
+  "license": "CC0"
+ },
+ "concrete_road_barrier": {
+  "size": [
+   1.543,
+   0.83,
+   0.639
+  ],
+  "min": [
+   -0.772,
+   -0.008,
+   -0.295
+  ],
+  "tris": 1600,
+  "authors": [
+   "Amal Kumar"
+  ],
+  "source": "https://polyhaven.com/a/concrete_road_barrier",
+  "license": "CC0"
+ },
+ "concrete_road_barrier_02": {
+  "size": [
+   1.563,
+   1.111,
+   0.442
+  ],
+  "min": [
+   -0.775,
+   -0.002,
+   -0.254
+  ],
+  "tris": 1600,
+  "authors": [
+   "Amal Kumar"
+  ],
+  "source": "https://polyhaven.com/a/concrete_road_barrier_02",
+  "license": "CC0"
+ },
+ "old_military_crate": {
+  "size": [
+   1.812,
+   0.298,
+   0.968
+  ],
+  "min": [
+   -0.91,
+   0.001,
+   -0.659
+  ],
+  "tris": 1611,
+  "authors": [
+   "Jack Mava"
+  ],
+  "source": "https://polyhaven.com/a/old_military_crate",
+  "license": "CC0"
+ },
+ "wooden_military_crate": {
+  "size": [
+   1.241,
+   0.464,
+   0.52
+  ],
+  "min": [
+   -0.62,
+   0,
+   -0.26
+  ],
+  "tris": 2398,
+  "authors": [
+   "Prabhjinder Singh"
+  ],
+  "source": "https://polyhaven.com/a/wooden_military_crate",
+  "license": "CC0"
+ },
+ "metal_jerrycan": {
+  "size": [
+   0.348,
+   0.454,
+   0.17
+  ],
+  "min": [
+   -0.169,
+   0,
+   -0.089
+  ],
+  "tris": 898,
+  "authors": [
+   "Sean Buckley"
+  ],
+  "source": "https://polyhaven.com/a/metal_jerrycan",
+  "license": "CC0"
+ },
+ "old_tyre": {
+  "size": [
+   0.6,
+   0.6,
+   0.165
+  ],
+  "min": [
+   -0.3,
+   -0.3,
+   -0.083
+  ],
+  "tris": 1200,
+  "authors": [
+   "MP"
+  ],
+  "source": "https://polyhaven.com/a/old_tyre",
+  "license": "CC0"
+ },
+ "rusted_wheel_rim_01": {
+  "size": [
+   0.399,
+   0.403,
+   0.15
+  ],
+  "min": [
+   -0.202,
+   -0.202,
+   -0.075
+  ],
+  "tris": 1099,
+  "authors": [
+   "John Hutcheson"
+  ],
+  "source": "https://polyhaven.com/a/rusted_wheel_rim_01",
+  "license": "CC0"
+ },
+ "gothic_statue": {
+  "size": [
+   1.473,
+   1.74,
+   1.564
+  ],
+  "min": [
+   -0.78,
+   -0.016,
+   -1.189
+  ],
+  "tris": 8999,
+  "authors": [
+   "Benny Weimer"
+  ],
+  "source": "https://polyhaven.com/a/gothic_statue",
+  "license": "CC0"
+ }
+}

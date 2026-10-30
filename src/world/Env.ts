@@ -41,8 +41,9 @@ function toFloat(g: THREE.BufferGeometry) {
   return g;
 }
 
-/** extraKits: more GLB kits (vehicles) whose pieces become available to makePiece with the same materials */
-export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean, backdrop = 1, extraKits: string[] = []) {
+/** extraKits: more GLB kits (vehicles) whose pieces become available to makePiece with the same materials;
+ *  skip: placed pieces drawn by something else (the photoscanned props) — their footprints still block */
+export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean, backdrop = 1, extraKits: string[] = [], skip: ReadonlySet<string> = new Set()) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   // piece name -> list of [material name, geometry]
@@ -92,6 +93,7 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
     return c;
   };
   for (const [list, byMat] of [[map.placements, near], [keep, far]] as const) for (const p of list) {
+    if (skip.has(p.piece)) continue;
     const parts = pieces.get(p.piece);
     if (!parts) continue;
     q.setFromAxisAngle(up, p.rot);

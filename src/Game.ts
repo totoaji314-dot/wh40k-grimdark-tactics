@@ -11,6 +11,7 @@ import { VehicleViews, type VehicleMeta } from './render/Vehicles';
 import { Cinematic } from './core/Cinematic';
 import { localFactionOverrides } from './render/localAssets';
 import { buildScatter } from './world/Scatter';
+import { buildProps, PROP_PIECES } from './world/Props';
 import { buildSky } from './render/Sky';
 import { UnitLibrary, heroLight } from './render/UnitLibrary';
 import { UnitRenderer, type Figure } from './render/UnitRenderer';
@@ -159,7 +160,10 @@ export class Game {
     progress(0.78, '건물과 엄폐물 배치 중');
     const density = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 0.6 : 0.3;
     const vehicleMeta: Record<string, VehicleMeta> = await (await fetch(BASE + 'assets/vehicles/vehicles.json')).json();
-    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb']);
+    // photoscanned props replace the kit's crates / barrels / barricades; if they fail to load the kit pieces stay
+    const props = await buildProps(BASE + 'assets/props/', this.map, density, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[props] not loaded', err); return null; });
+    if (props) { this.scene.add(props.group); console.info('[props]', props.count, 'props,', Math.round(props.tris), 'triangles'); }
+    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb'], props ? PROP_PIECES : new Set());
     this.scene.add(env.group);
     this.makePiece = env.makePiece;
     console.info('[env] triangles', env.tris, 'backdrop blocks', this.map.backdrop.length);
