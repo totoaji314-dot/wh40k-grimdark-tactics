@@ -98,13 +98,14 @@ export function terrainLayer(name: typeof TERRAIN_LAYERS[number], size: number):
 }
 
 // ------------------------------------------------------------------ building / prop materials (tile 2 m, 1 UV unit = 2 m)
-export const ENV_MATS = ['ferrocrete', 'stone', 'metal', 'rust', 'brass', 'glass', 'sandbag', 'wood', 'hazard', 'rubble', 'roof', 'lamp', 'scrap', 'red', 'bone'] as const;
+export const ENV_MATS = ['ferrocrete', 'stone', 'metal', 'rust', 'brass', 'glass', 'sandbag', 'wood', 'hazard', 'rubble', 'roof', 'lamp', 'scrap', 'red', 'bone', 'paint', 'track'] as const;
 export type EnvMat = typeof ENV_MATS[number];
 
 export const ENV_PBR: Record<EnvMat, { metal: number; emissive?: number }> = {
   ferrocrete: { metal: 0 }, stone: { metal: 0 }, metal: { metal: 0.75 }, rust: { metal: 0.45 }, brass: { metal: 1 },
   glass: { metal: 0.2, emissive: 0x2a1408 }, sandbag: { metal: 0 }, wood: { metal: 0 }, hazard: { metal: 0.3 }, rubble: { metal: 0 },
   roof: { metal: 0.6 }, lamp: { metal: 0, emissive: 0xffc070 }, scrap: { metal: 0.55 }, red: { metal: 0.35 }, bone: { metal: 0 },
+  paint: { metal: 0.2 }, track: { metal: 0.7 },
 };
 
 export function envTexture(name: EnvMat, size: number): TexSet {
@@ -182,6 +183,35 @@ export function envTexture(name: EnvMat, size: number): TexSet {
       c = lerp3(c, hex(0x5a5650), wear * 0.7);
       return [c[0] * (0.8 + 0.2 * n), c[1] * (0.8 + 0.2 * n), c[2] * (0.8 + 0.2 * n), n * 0.3 - wear * 0.2, 0.6];
     }, 1.2);
+    case 'paint': return make(size, (u, v) => {
+      // vehicle armour: olive drab with panel seams, mottled fading, edge chipping down to bare steel, streaked grime
+      const n = fbm(u * 6, v * 6, 5, 221, 6);
+      const mott = fbm(u * 2, v * 2, 3, 57, 2);
+      const px = (u * 2) % 1, py = (v * 2) % 1;
+      const seam = Math.min(sstep(0, 0.012, px), sstep(1, 0.988, px), sstep(0, 0.012, py), sstep(1, 0.988, py));
+      const chip = sstep(0.71, 0.75, fbm(u * 26, v * 26, 4, 63, 26)) * (0.4 + 0.6 * (1 - seam));
+      const streak = sstep(0.55, 0.85, fbm(u * 18, v * 2.2, 3, 71, 18)) * 0.35;
+      let c = lerp3(hex(0x3a4226), hex(0x4a5232), mott * 0.7 + n * 0.3);
+      c = lerp3(c, hex(0x2e2c22), streak);
+      c = lerp3(c, hex(0x6e6c68), chip);
+      const k = 0.78 + 0.22 * seam;
+      return [c[0] * k, c[1] * k, c[2] * k, seam * 0.55 + n * 0.12 - chip * 0.25, mix(0.62, 0.35, chip)];
+    }, 1.8);
+    case 'track': return make(size, (u, v) => {
+      // track links: 4 links per tile along u, grouser bars, central guide horn, worn shiny contact faces
+      const lu = (u * 4) % 1;
+      const gap = Math.min(sstep(0, 0.06, lu), sstep(1, 0.94, lu));
+      const bar = sstep(0.38, 0.44, lu) * sstep(0.62, 0.56, lu);
+      const horn = sstep(0.42, 0.46, v) * sstep(0.58, 0.54, v) * sstep(0.2, 0.3, lu) * sstep(0.8, 0.7, lu);
+      const pin = Math.abs(lu - 0.03) < 0.03 || Math.abs(lu - 0.97) < 0.03 ? 1 : 0;
+      const n = fbm(u * 16, v * 16, 4, 231, 16);
+      const rustSpots = sstep(0.55, 0.8, fbm(u * 8, v * 8, 3, 83, 8));
+      let c = lerp3(hex(0x2a2826), hex(0x3a3633), n);
+      c = lerp3(c, hex(0x5a3a22), rustSpots * 0.5);
+      c = lerp3(c, hex(0x7a7672), bar * 0.6);
+      const k = 0.35 + 0.65 * gap;
+      return [c[0] * k, c[1] * k, c[2] * k, gap * 0.5 + bar * 0.5 + horn * 0.6 + pin * 0.2, mix(0.75, 0.35, bar)];
+    }, 3.0);
     case 'rubble': return terrainLayer('rubble', size);
     case 'roof': return make(size, (u, v) => {
       const corr = 0.5 + 0.5 * Math.sin(u * Math.PI * 24);

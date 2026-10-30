@@ -1,4 +1,4 @@
-import { SCENARIOS, UNITS, FACTIONS, unitSize, type Scenario , type Deploy } from '../sim/data';
+import { SCENARIOS, UNITS, SOLDIERS, FACTIONS, unitSize, type Scenario , type Deploy } from '../sim/data';
 import type { Settings } from '../core/Settings';
 import { el } from './Hud';
 
@@ -66,7 +66,7 @@ export class Menu {
     s.style.flexDirection = 'column';
     const counts: [Record<string, number>, Record<string, number>] = [{ tactical: 2, devastator: 1 }, { boyz: 2, shootas: 1 }];
     let map: Scenario['map'] = 'ruins', diff = 1, air = 2, pods = 1;
-    const roster = (side: 0 | 1) => Object.values(UNITS).map((t) => `<div class="ros-row" title="${t.desc}"><span class="ic" style="color:${FACTIONS[t.faction].color}">${t.icon}</span><span class="nm">${t.ko}<small>${FACTIONS[t.faction].ko} · ${unitSize(t)}명</small></span><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="-1">−</button><b data-cnt="${side}-${t.id}">0</b><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="1">+</button></div>`).join('');
+    const roster = (side: 0 | 1) => Object.values(UNITS).map((t) => `<div class="ros-row" title="${t.desc}"><span class="ic" style="color:${FACTIONS[t.faction].color}">${t.icon}</span><span class="nm">${t.ko}<small>${FACTIONS[t.faction].ko} · ${t.members.some(([id]) => SOLDIERS[id].vehicle) ? '전차 ' + unitSize(t) + '대' : unitSize(t) + '명'}</small></span><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="-1">−</button><b data-cnt="${side}-${t.id}">0</b><button class="btn sm" data-side="${side}" data-u="${t.id}" data-k="1">+</button></div>`).join('');
     s.innerHTML = `<div class="title" style="max-width:1120px"><h1 style="font-size:clamp(22px,3.6vw,36px)">커스텀 전투</h1><h2>전장과 양측 군대, 지원 전력을 직접 편성합니다</h2></div>
       <div class="row panel" style="padding:8px 12px"><span>전장</span><button class="btn on" data-map="ruins">폐허 도시</button><button class="btn" data-map="trenches">참호선</button>
         <span style="margin-left:10px">난이도</span><button class="btn" data-d="0">쉬움</button><button class="btn on" data-d="1">보통</button><button class="btn" data-d="2">어려움</button></div>
@@ -175,6 +175,8 @@ export const HELP_HTML = `<h2 class="serif" style="color:var(--brass);margin-top
 <div><b>부대 모드</b> <kbd>M</kbd> 근접전 모드(사격 대신 백병전) · <kbd>V</kbd> 경계 모드(자리 사수, 추격 안 함) · <kbd>X</kbd> 견제 모드(적이 달려들면 물러나며 사격) · <kbd>L</kbd> 그룹 진형 고정(여러 부대가 배치를 유지하며 이동)</div>
 <div><b>지원 전력</b> 왼쪽 위 버튼 → 지점 클릭: ✈ 공중 지원(썬더볼트 기총 소사·폭격), ⬇ 드롭 포드(전술 분대 강하, 착지 충격으로 적을 넘어뜨림) · 우클릭/Esc 취소</div>
 <div><b>커스텀 전투</b> 전투 선택 → 커스텀 전투: 전장, 양측 부대, 공중 지원·드롭 포드 횟수를 직접 편성</div>
+<div><b>시네마틱 모드</b> <kbd>K</kbd> 또는 🎬 버튼: 화면 표시를 숨기고 카메라가 근접전·전차 포격·폭발을 따라 자동으로 컷을 바꿉니다. 부대를 선택한 채 켜면 그 부대를 따라갑니다. 클릭/탭이나 <kbd>Esc</kbd>로 종료</div>
+<div><b>전차 (리만 러스)</b> 배틀 캐논(범위 폭발)·라스캐논·스폰슨 헤비 볼터가 각자 사격합니다. 소화기에는 거의 피해를 입지 않지만 플라즈마·라스캐논·근접전 포위에는 약합니다. 격파되면 잔해가 장애물로 남습니다</div>
 <div><kbd>H</kbd> 정지 · <kbd>R</kbd> 달리기 · <kbd>C</kbd> 돌격 · <kbd>F</kbd> 자유 사격 · <kbd>G</kbd> 특수 능력 · <kbd>Alt</kbd>+<kbd>1</kbd>~<kbd>4</kbd> 전열/종대/산개/방어 진형 (그룹이 없을 때는 <kbd>1</kbd>~<kbd>4</kbd>만으로도) · <kbd>Ctrl</kbd>+<kbd>숫자</kbd> 부대 그룹 지정 · <kbd>숫자</kbd> 그룹 선택(두 번: 카메라 이동)</div>
 <div><kbd>Space</kbd> 일시정지 (일시정지 중에도 명령 가능) · <kbd>+</kbd><kbd>-</kbd> 배속 · <kbd>Esc</kbd> 메뉴</div>
 <h3>모바일 · 태블릿 (디벗)</h3>

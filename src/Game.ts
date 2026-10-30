@@ -7,10 +7,12 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { BattleMap, PLAY, HALF, GN, CELL } from './world/MapGen';
 import { buildTerrain } from './world/Terrain';
 import { buildEnv, loadEnvFootprints } from './world/Env';
+import { VehicleViews, type VehicleMeta } from './render/Vehicles';
+import { Cinematic } from './core/Cinematic';
 import { localFactionOverrides } from './render/localAssets';
 import { buildScatter } from './world/Scatter';
 import { buildSky } from './render/Sky';
-import { UnitLibrary } from './render/UnitLibrary';
+import { UnitLibrary, heroLight } from './render/UnitLibrary';
 import { UnitRenderer, type Figure } from './render/UnitRenderer';
 import { Effects } from './render/Effects';
 import { CameraRig } from './core/CameraRig';
@@ -63,6 +65,8 @@ export class Game {
   hud!: Hud;
   figures: Figure[] = [];
   figOf = new Map<Soldier, Figure>();
+  vehicles!: VehicleViews;
+  cine!: Cinematic;
   selected = new Set<Unit>();
   playerSide = 0;
   speed = 1;
@@ -137,6 +141,7 @@ export class Game {
     this.ai = [new Commander(this.battle, 1 - this.playerSide, this.opts.difficulty)];
     const counts: Record<string, number> = {};
     for (const s of this.battle.soldiers) {
+      if (s.def.vehicle) continue;   // tanks are drawn by VehicleViews, not the instanced soldier renderer
       counts[s.def.id] = (counts[s.def.id] ?? 0) + 1;
       const f: Figure = { variant: s.def.id, x: s.x, y: s.y, z: s.z, yaw: s.yaw, scale: s.def.scale, tint: s.tint, anim: s.anim, visible: true };
       this.figures.push(f); this.figOf.set(s, f);
@@ -153,7 +158,8 @@ export class Game {
     await tick();
     progress(0.78, '건물과 엄폐물 배치 중');
     const density = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 0.6 : 0.3;
-    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25);
+    const vehicleMeta: Record<string, VehicleMeta> = await (await fetch(BASE + 'assets/vehicles/vehicles.json')).json();
+    const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb']);
     this.scene.add(env.group);
     this.makePiece = env.makePiece;
     console.info('[env] triangles', env.tris, 'backdrop blocks', this.map.backdrop.length);
@@ -163,6 +169,8 @@ export class Game {
     this.setupLights();
     this.fx = new Effects(P.particles, P.lights);
     this.scene.add(this.fx.group);
+    this.vehicles = new VehicleViews(this.scene, env.makePiece, env.getMat, vehicleMeta, this.fx, (x, z) => this.map.heightAt(x, z));
+    for (const s of this.battle.soldiers) if (s.def.vehicle) this.vehicles.add(s);
     for (const f of this.map.fires) { this.fx.addFire(f.x, f.y, f.z, f.s); this.fireSpots.push(f); }
     for (const p of this.map.placements) {
       if (p.piece === 'smokestack') this.fx.addStack(p.x, p.y + 37, p.z, 1.3);
@@ -183,6 +191,8 @@ export class Game {
     }
     this.makeMarkers();
     this.rig = new CameraRig(this.camera, (x, z) => this.map.heightAt(x, z));
+    this.cine = new Cinematic(this.ui, this.camera, (x, z) => this.map.heightAt(x, z), (x0, z0, x1, z1) => this.map.los(x0, z0, x1, z1, 2.2, 1.2),
+      (x, z) => !this.map.isBlocked(x, z) && ![[0, 0], [3.5, 0], [-3.5, 0], [0, 3.5], [0, -3.5], [2.5, 2.5], [-2.5, 2.5], [2.5, -2.5], [-2.5, -2.5]].some(([ox, oz]) => this.map.isSolid(x + ox, z + oz, 0.4)));
     const mine = this.battle.units.filter((u) => u.side === this.playerSide);
     const cx = mine.reduce((s, u) => s + u.x, 0) / mine.length, cz = mine.reduce((s, u) => s + u.z, 0) / mine.length;
     this.rig.focus(cx, cz + (cz > 0 ? 18 : -18), 85);
@@ -202,7 +212,7 @@ export class Game {
       formation: (f) => this.forSel((u) => this.battle.setFormation(u, f)),
       ability: () => this.forSel((u) => { if (this.battle.useAbility(u)) this.abilityFx(u); }),
       selectAll: () => this.selectAll(),
-      pause: () => this.togglePause(), speed: () => this.cycleSpeed(), menu: () => this.openMenu(),
+      pause: () => this.togglePause(), speed: () => this.cycleSpeed(), menu: () => this.openMenu(), cinematic: () => this.toggleCinematic(),
     });
     this.hud.onBanner = (u, e) => {
       if (e.button === 2) { if (u.side !== this.playerSide && this.selected.size) this.attack(u, false); return; }
@@ -229,6 +239,7 @@ export class Game {
     const amb = new THREE.AmbientLight(0x343c50, 0.4); this.scene.add(amb);
     const sunDir = SUN_DIR.clone();
     this.sun = new THREE.DirectionalLight(0xffb070, 3.6);
+    heroLight.sunDir.value.copy(sunDir); heroLight.sunColor.value.copy(this.sun.color);
     this.sun.position.copy(sunDir).multiplyScalar(200);
     if (P.shadowSize > 0 && this.settings.shadows) {
       this.sun.castShadow = true;
@@ -332,8 +343,14 @@ export class Game {
       const adt = dt * this.speed;
       for (const s of b.soldiers) if (s.alive || s.deadT < 4) stepAnim(s.anim, adt);
     }
-    this.updateCamera(dt);
+    if (this.cine.active) {
+      // the rig keeps following the shot so shadows and the audio listener stay centred on it; the cinematic camera then takes over
+      const f = this.cine.focus; if (f) this.rig.focus(f.x, f.z, 30);
+      this.rig.update(dt);
+      this.cine.update(this.paused ? 0 : dt * this.speed, b);
+    } else this.updateCamera(dt);
     this.syncFigures();
+    this.vehicles.update(this.paused || this.deploying ? 0 : dt * this.speed, b);
     this.units.update(this.camera, this.figures, this.preset.lodBias);
     this.updateRings();
     this.fx.update(this.paused ? 0 : dt * this.speed, this.camera.position, [1.2, -0.6]);
@@ -406,15 +423,16 @@ export class Game {
 
   private updateRings() {
     let n = 0;
+    if (this.cine?.active) { this.rings.count = 0; return; }
     const m = new THREE.Matrix4(), c = new THREE.Color();
     const put = (s: Soldier, col: number, scale: number) => {
       if (n >= 1200) return;
       m.makeScale(scale, 1, scale); m.setPosition(s.x, s.y + 0.06, s.z);
       this.rings.setMatrixAt(n, m); this.rings.setColorAt(n, c.setHex(col)); n++;
     };
-    for (const u of this.selected) for (const s of u.soldiers) if (s.alive) put(s, u.mstate === 'routing' ? 0xff8040 : 0x9fff70, s.def.scale * (s.def.role === 'boss' ? 1.6 : 1));
-    if (this.hover && !this.selected.has(this.hover)) for (const s of this.hover.soldiers) if (s.alive) put(s, this.hover.side === this.playerSide ? 0xfff0a0 : 0xff4030, s.def.scale);
-    if (this.markTarget && this.markTarget.t > 0) { this.markTarget.t -= 1 / 60; for (const s of this.markTarget.u.soldiers) if (s.alive) put(s, 0xff2a1a, s.def.scale * 1.15); }
+    for (const u of this.selected) for (const s of u.soldiers) if (s.alive) put(s, u.mstate === 'routing' ? 0xff8040 : 0x9fff70, s.def.vehicle ? 6 : s.def.scale * (s.def.role === 'boss' ? 1.6 : 1));
+    if (this.hover && !this.selected.has(this.hover)) for (const s of this.hover.soldiers) if (s.alive) put(s, this.hover.side === this.playerSide ? 0xfff0a0 : 0xff4030, s.def.vehicle ? 6 : s.def.scale);
+    if (this.markTarget && this.markTarget.t > 0) { this.markTarget.t -= 1 / 60; for (const s of this.markTarget.u.soldiers) if (s.alive) put(s, 0xff2a1a, s.def.vehicle ? 6.5 : s.def.scale * 1.15); }
     this.rings.count = n;
     this.rings.instanceMatrix.needsUpdate = true;
     if (this.rings.instanceColor) this.rings.instanceColor.needsUpdate = true;
@@ -429,7 +447,7 @@ export class Game {
       let x = 0, z = 0, y = -1e9;
       for (const s of al) { x += s.x; z += s.z; y = Math.max(y, s.y); }
       x /= al.length; z /= al.length;
-      const top = Math.max(...al.map((s) => this.lib.variants.get(s.def.id)!.height * s.def.scale));
+      const top = Math.max(...al.map((s) => s.def.vehicle ? s.def.vehicle.height : this.lib.variants.get(s.def.id)!.height * s.def.scale));
       this.bannerV.set(x, y + top + 1.2 + this.rig.dist * 0.02, z).project(this.camera);
       const vis = this.bannerV.z < 1 && Math.abs(this.bannerV.x) < 1.1 && Math.abs(this.bannerV.y) < 1.1;
       this.hud.banner(u, (this.bannerV.x * 0.5 + 0.5) * w, (-this.bannerV.y * 0.5 + 0.5) * h, vis, this.selected.has(u));
@@ -458,12 +476,20 @@ export class Game {
     for (const e of b.events) {
       switch (e.type) {
         case 'shot': {
-          const f = this.figOf.get(e.s)!;
-          const m = this.units.point(f, e.pistol ? 'muzzle2' : 'muzzle', this.v);
-          const dx = Math.sin(e.s.yaw), dz = Math.cos(e.s.yaw);
+          let m: THREE.Vector3, dx: number, dz: number;
+          if (e.s.def.vehicle) {
+            m = this.vehicles.muzzle(e.s, e.mount, this.v);
+            const L = Math.hypot(e.tx - m.x, e.tz - m.z) || 1; dx = (e.tx - m.x) / L; dz = (e.tz - m.z) / L;
+            if (e.mount === 'turret' && this.rig.focusPoint.distanceTo(m) < 90) this.rig.shake = Math.max(this.rig.shake, 0.25);
+          } else {
+            const f = this.figOf.get(e.s)!;
+            m = this.units.point(f, e.pistol ? 'muzzle2' : 'muzzle', this.v);
+            dx = Math.sin(e.s.yaw); dz = Math.cos(e.s.yaw);
+          }
           this.fx.muzzle(m.x, m.y, m.z, e.w.tracer, dx, dz);
           this.fx.tracer(m.x, m.y, m.z, e.tx, e.ty, e.tz, e.dur, e.w.tracer);
           this.audio.play(soundOf(e.w.sound), e.s.x, e.s.z, 0.8);
+          if (e.mount === 'turret') this.cine.heat(e.s.x, e.s.z, 2); else if (e.w.splash) this.cine.heat(e.tx, e.tz, 0.6);
           break;
         }
         case 'impact': {
@@ -472,8 +498,19 @@ export class Game {
           this.fx.impact(e.x, e.y, e.z, e.w.tracer, e.hit && armour, e.hit && !armour);
           break;
         }
-        case 'death': this.fx.dust(e.s.x, e.s.y, e.s.z, e.s.def.scale); if (Math.random() < 0.3) this.audio.play('death', e.s.x, e.s.z, 0.5); break;
+        case 'death':
+          if (e.s.def.vehicle) {
+            // tank destroyed: fireball, turret thrown off, the wreck keeps burning
+            this.vehicles.destroy(e.s);
+            this.fx.explosion(e.s.x, e.s.y + 1.5, e.s.z, 5, 0xff7a20);
+            this.fx.addFire(e.s.x, e.s.y + 1.8, e.s.z, 1.4); this.fireSpots.push({ x: e.s.x, y: e.s.y + 1.8, z: e.s.z, s: 1.4 });
+            this.audio.play('explosion', e.s.x, e.s.z, 1.3);
+            this.rig.shake = Math.max(this.rig.shake, 0.8);
+            this.hud.toast(`${e.s.unit.name} 격파!`, 2.5);
+          } else { this.fx.dust(e.s.x, e.s.y, e.s.z, e.s.def.scale); if (Math.random() < 0.3) this.audio.play('death', e.s.x, e.s.z, 0.5); }
+          break;
         case 'melee': {
+          this.cine.heat(e.s.x, e.s.z, 0.25);
           if (e.hit && Math.random() < 0.5) {
             const x = (e.s.x + e.foe.x) / 2, z = (e.s.z + e.foe.z) / 2, y = e.foe.y + 1.1;
             const armour = e.foe.def.armor > 0.6;
@@ -484,6 +521,7 @@ export class Game {
           break;
         }
         case 'charge': {
+          this.cine.heat(e.target.x, e.target.z, 4);
           if (e.u.faction === 'orks') this.audio.play('waaagh', e.u.x, e.u.z, 0.9);
           else if (e.u.faction === 'krieg') this.audio.play('whistle', e.u.x, e.u.z, 0.8);
           if (e.target.side === this.playerSide) this.hud.toast(`${e.u.name}이(가) ${e.target.name}에 돌격한다!`, 2);
@@ -493,7 +531,7 @@ export class Game {
         case 'rout': this.hud.toast(`${e.u.name} 패주!`, 2.5); this.audio.play('horn', e.u.x, e.u.z, 0.5); break;
         case 'rally': if (e.u.side === this.playerSide) this.hud.toast(`${e.u.name} 재집결`, 2); break;
         case 'ability': this.abilityFx(e.u); break;
-        case 'explosion': this.fx.explosion(e.x, e.y, e.z, e.r * 0.8, e.color ?? 0x70c8ff); this.audio.play('explosion', e.x, e.z, e.color ? 1 : 0.7); if (e.color) this.rig.shake = Math.max(this.rig.shake, 0.5); break;
+        case 'explosion': this.cine.heat(e.x, e.z, 2 + e.r * 0.2); this.fx.explosion(e.x, e.y, e.z, e.r * 0.8, e.color ?? 0x70c8ff); this.audio.play('explosion', e.x, e.z, e.color ? 1 : 0.7); if (e.color && e.r >= 5) this.rig.shake = Math.max(this.rig.shake, 0.5); break;
         case 'reinforce': this.addUnitView(e.u); break;
         case 'order': break;
       }
@@ -646,10 +684,10 @@ export class Game {
     const v = new THREE.Vector3();
     for (const s of this.battle.soldiers) {
       if (!s.alive) continue;
-      v.set(s.x, s.y + 1.0 * s.def.scale, s.z).project(this.camera);
+      v.set(s.x, s.y + (s.def.vehicle ? 1.6 : 1.0 * s.def.scale), s.z).project(this.camera);
       if (v.z > 1) continue;
       const sx = (v.x * 0.5 + 0.5) * innerWidth, sy = (-v.y * 0.5 + 0.5) * innerHeight;
-      const d = (sx - cx) ** 2 + (sy - cy) ** 2;
+      const d = ((sx - cx) ** 2 + (sy - cy) ** 2) * (s.def.vehicle ? 0.2 : 1);   // a tank covers far more screen than a man
       if (d < bd) { bd = d; best = s.unit; }
     }
     return best && best.mstate !== 'gone' ? best : null;
@@ -659,6 +697,7 @@ export class Game {
     const cv = this.renderer.domElement;
     const on = <K extends keyof HTMLElementEventMap>(t: EventTarget, k: K | string, fn: (e: never) => void, o?: AddEventListenerOptions) => { t.addEventListener(k, fn as EventListener, o); this.disposers.push(() => t.removeEventListener(k, fn as EventListener)); };
     const touch = matchMedia('(pointer:coarse)').matches;
+    on(cv, 'pointerdown', () => { if (this.cine?.active) this.toggleCinematic(); }, { capture: true });
     // ---------- mouse
     let lDown: { x: number; y: number } | null = null, rDown: { x: number; y: number; g: THREE.Vector3 | null } | null = null, mDown: { x: number; y: number } | null = null;
     let lastRight = 0;
@@ -724,7 +763,8 @@ export class Game {
       this.keys.add(e.code);
       const k = e.code;
       if (k === 'Space') { e.preventDefault(); this.togglePause(); }
-      else if (k === 'Escape') { if (this.targeting) this.armSupport(null); else this.openMenu(); }
+      else if (k === 'Escape') { if (this.cine.active) this.toggleCinematic(); else if (this.targeting) this.armSupport(null); else this.openMenu(); }
+      else if (k === 'KeyK') this.toggleCinematic();
       else if (k === 'KeyH') this.forSel((u) => this.battle.order(u, { type: 'halt' }));
       else if (k === 'KeyR') { const on2 = ![...this.selected].every((u) => u.run); this.forSel((u) => { u.run = on2; }); }
       else if (k === 'KeyC') this.chargeNearest();
@@ -844,7 +884,7 @@ export class Game {
   /** Toggle a unit mode on the selection (all on if any is off). Melee mode needs a unit that can also fight hand to hand. */
   groupLock = false;
   private toggleMode(key: 'meleeMode' | 'guard' | 'skirmish', label: string) {
-    const sel = [...this.selected].filter((u) => this.battle.active(u) && (key !== 'skirmish' || !u.meleeOnly) && (key !== 'meleeMode' || !u.meleeOnly));
+    const sel = [...this.selected].filter((u) => this.battle.active(u) && (key !== 'skirmish' || !u.meleeOnly) && (key !== 'meleeMode' || (!u.meleeOnly && !u.vehicle)));
     if (!sel.length) return;
     const on = !sel.every((u) => u[key]);
     for (const u of sel) {
@@ -981,6 +1021,7 @@ export class Game {
   /** Figures, card and banner for a unit that joined mid-battle. */
   private addUnitView(u: Unit) {
     for (const s of u.soldiers) {
+      if (s.def.vehicle) { this.vehicles.add(s); continue; }
       if (this.figOf.has(s)) continue;
       const f: Figure = { variant: s.def.id, x: s.x, y: s.y, z: s.z, yaw: s.yaw, scale: s.def.scale, tint: s.tint, anim: s.anim, visible: true };
       this.figures.push(f); this.figOf.set(s, f);
@@ -1057,6 +1098,12 @@ export class Game {
     this.hud.update(0, this.selected, this.speed, this.paused);
   }
 
+  /** Cinematic mode on/off (K): with a unit selected the camera follows it, otherwise it directs itself. */
+  toggleCinematic() {
+    const on = this.cine.toggle([...this.selected][0] ?? null);
+    if (!on) this.hud.toast('시네마틱 모드 끔', 1.2);
+  }
+
   togglePause() { this.paused = !this.paused; this.hud.toast(this.paused ? '일시정지 — 일시정지 중에도 명령 가능' : '전투 재개', 1.2); }
   cycleSpeed() { this.speed = this.speed >= 3 ? 1 : this.speed + 1; }
   openMenu() { this.paused = true; (this as { onMenu?: () => void }).onMenu?.(); }
@@ -1069,6 +1116,19 @@ export class Game {
     this.renderer.setSize(innerWidth, innerHeight);
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     if (this.composer) { this.composer.setPixelRatio(dpr); this.composer.setSize(innerWidth, innerHeight); }
+  }
+
+  /** Render-target pixels (linear) -> filmic curve, sRGB, rows flipped -> PNG data URL. */
+  private encodePortrait(px: Uint8Array, S: number, g: CanvasRenderingContext2D, cv: HTMLCanvasElement) {
+    const img = g.createImageData(S, S);
+    const lut = new Uint8ClampedArray(256);
+    for (let i = 0; i < 256; i++) { const x = (i / 255) * 1.25; const t = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); lut[i] = 255 * Math.pow(Math.min(1, Math.max(0, t)), 1 / 2.2); }
+    for (let y = 0; y < S; y++) {
+      const src = (S - 1 - y) * S * 4, dst = y * S * 4;
+      for (let x = 0; x < S * 4; x += 4) { img.data[dst + x] = lut[px[src + x]]; img.data[dst + x + 1] = lut[px[src + x + 1]]; img.data[dst + x + 2] = lut[px[src + x + 2]]; img.data[dst + x + 3] = 255; }
+    }
+    g.putImageData(img, 0, 0);
+    return cv.toDataURL('image/png');
   }
 
   /** Render a close-up portrait of each unit type's main soldier model for the unit cards. */
@@ -1095,6 +1155,17 @@ export class Game {
       const lead = u.leader ?? trooper;
       const pick = u.tpl.id === 'command' || u.tpl.id === 'nobz' ? lead : trooper;
       const id = pick.def.id;
+      if (pick.def.vehicle) {
+        const a = this.vehicles.assemble(pick.def.vehicle.model, pick.def.faction);
+        a.root.rotation.y = 0.75 + Math.PI;
+        scene.add(a.root);
+        cam.position.set(7.5, 5.2, 9.5); cam.lookAt(0, 1.4, 0); cam.updateMatrixWorld();
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.setRenderTarget(rt); this.renderer.render(scene, cam); this.renderer.readRenderTargetPixels(rt, 0, 0, S, S, px); this.renderer.setRenderTarget(null);
+        scene.remove(a.root);
+        out.set(u.tpl.id, this.encodePortrait(px, S, g, cv));
+        continue;
+      }
       const asset = this.lib.variants.get(id);
       if (!asset) continue;
       const ur = new UnitRenderer(this.lib, { [id]: 1 }, false);
@@ -1111,16 +1182,7 @@ export class Game {
       this.renderer.render(scene, cam);
       this.renderer.readRenderTargetPixels(rt, 0, 0, S, S, px);
       this.renderer.setRenderTarget(null);
-      const img = g.createImageData(S, S);
-      // render targets hold linear colour: apply a filmic curve + sRGB encode while flipping rows
-      const lut = new Uint8ClampedArray(256);
-      for (let i = 0; i < 256; i++) { const x = (i / 255) * 1.25; const t = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); lut[i] = 255 * Math.pow(Math.min(1, Math.max(0, t)), 1 / 2.2); }
-      for (let y = 0; y < S; y++) {
-        const src = (S - 1 - y) * S * 4, dst = y * S * 4;
-        for (let x = 0; x < S * 4; x += 4) { img.data[dst + x] = lut[px[src + x]]; img.data[dst + x + 1] = lut[px[src + x + 1]]; img.data[dst + x + 2] = lut[px[src + x + 2]]; img.data[dst + x + 3] = 255; }
-      }
-      g.putImageData(img, 0, 0);
-      out.set(u.tpl.id, cv.toDataURL('image/png'));
+      out.set(u.tpl.id, this.encodePortrait(px, S, g, cv));
       scene.remove(ur.group);
       ur.group.children.forEach((m) => (m as THREE.Mesh).geometry.dispose());
     }
@@ -1211,12 +1273,13 @@ export class Game {
       if (mat) (Array.isArray(mat) ? mat : [mat]).forEach((x) => x.dispose());
     });
     this.composer?.dispose();
+    this.cine?.dispose();
     this.renderer.renderLists.dispose();
   }
 }
 
-function soundOf(s: string): 'las' | 'bolter' | 'hbolter' | 'stubber' | 'plasma' | 'slugga' | 'shoota' {
-  return (['las', 'bolter', 'hbolter', 'stubber', 'plasma', 'slugga', 'shoota'].includes(s) ? s : 'las') as 'las';
+function soundOf(s: string): 'las' | 'bolter' | 'hbolter' | 'stubber' | 'plasma' | 'slugga' | 'shoota' | 'cannon' | 'lascannon' {
+  return (['las', 'bolter', 'hbolter', 'stubber', 'plasma', 'slugga', 'shoota', 'cannon', 'lascannon'].includes(s) ? s : 'las') as 'las';
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 void SOLDIERS;

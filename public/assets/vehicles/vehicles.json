@@ -1,0 +1,56 @@
+{
+ "leman_russ": {
+  "hull": "lr_hull",
+  "track": "lr_track",
+  "turret": "lr_turret",
+  "barrel": "lr_barrel",
+  "turretAt": [
+   0.0,
+   1.95,
+   0.45
+  ],
+  "barrelAt": [
+   0.0,
+   0.605,
+   1.342
+  ],
+  "muzzle": [
+   0,
+   0,
+   3.3
+  ],
+  "hullMuzzle": [
+   0,
+   1.42,
+   4.42
+  ],
+  "sponsons": [
+   [
+    2.525,
+    1.28,
+    1.78
+   ],
+   [
+    -2.525,
+    1.28,
+    1.78
+   ]
+  ],
+  "exhausts": [
+   [
+    1.35,
+    2.98,
+    -3.15
+   ],
+   [
+    -1.35,
+    2.98,
+    -3.15
+   ]
+  ],
+  "trackTile": 1.4,
+  "length": 7.0,
+  "width": 4.6,
+  "height": 3.2
+ }
+}

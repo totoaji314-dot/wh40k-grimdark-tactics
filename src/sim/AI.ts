@@ -71,7 +71,7 @@ export class Commander {
     const charging = foes.filter((f) => f.charging && f.target && mine.includes(f.target));
     const threatened = charging.find((f) => f.target === u);
     const myStrength = this.strength(u);
-    const goodMelee = u.faction === 'marines' || (u.faction === 'krieg' && myStrength > 0.5);
+    const goodMelee = !u.vehicle && (u.faction === 'marines' || (u.faction === 'krieg' && myStrength > 0.5));
     if (threatened && !goodMelee && u.formation !== 'defensive' && dist(this.centre(u), this.centre(threatened)) < 30) b.setFormation(u, 'defensive');
     if (!threatened && u.formation === 'defensive' && !u.inMelee) b.setFormation(u, u.tpl.formation);
     // abilities when there is something to shoot

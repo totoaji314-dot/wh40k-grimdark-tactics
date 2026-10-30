@@ -41,12 +41,14 @@ function toFloat(g: THREE.BufferGeometry) {
   return g;
 }
 
-export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean, backdrop = 1) {
+/** extraKits: more GLB kits (vehicles) whose pieces become available to makePiece with the same materials */
+export async function buildEnv(base: string, map: BattleMap, texSize: number, castShadow: boolean, backdrop = 1, extraKits: string[] = []) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
-  const gltf = await loader.loadAsync(base + 'env.glb');
   // piece name -> list of [material name, geometry]
   const pieces = new Map<string, [string, THREE.BufferGeometry][]>();
+  const kits = await Promise.all([base + 'env.glb', ...extraKits].map((u) => loader.loadAsync(u)));
+  for (const gltf of kits) {
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -58,6 +60,7 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
     if (!pieces.has(pieceName)) pieces.set(pieceName, []);
     pieces.get(pieceName)!.push([matName, g]);
   });
+  }
   const near = new Map<string, THREE.BufferGeometry[]>();
   const far = new Map<string, THREE.BufferGeometry[]>();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1);
@@ -75,7 +78,8 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
       for (let i = 0; i < c.attributes.position.count; i++) { col[i * 4] = src[i * 3]; col[i * 4 + 1] = src[i * 3 + 1]; col[i * 4 + 2] = src[i * 3 + 2]; col[i * 4 + 3] = 1; }
       c.setAttribute('color', new THREE.BufferAttribute(col, 4));
     }
-    boxUV(c, UV_SCALE[mat] ?? 2.0);
+    // track links keep their authored UVs (u runs along the loop, so the tread can scroll)
+    if (mat !== 'track' || !c.attributes.uv) boxUV(c, UV_SCALE[mat] ?? 2.0);
     if (!c.index) { const idx = new Uint32Array(c.attributes.position.count); for (let i = 0; i < idx.length; i++) idx[i] = i; c.setIndex(new THREE.BufferAttribute(idx, 1)); }
     for (const k of ['position', 'normal', 'uv', 'color']) {
       const at = c.attributes[k] as THREE.BufferAttribute;
@@ -151,5 +155,5 @@ export async function buildEnv(base: string, map: BattleMap, texSize: number, ca
     }
     return g;
   };
-  return { group, tris, makePiece };
+  return { group, tris, makePiece, getMat };
 }

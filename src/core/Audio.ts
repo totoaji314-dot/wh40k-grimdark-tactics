@@ -1,6 +1,6 @@
 // Procedural battle audio (WebAudio synthesis only, no sample files). Positional by distance / screen side.
 
-type Kind = 'las' | 'bolter' | 'hbolter' | 'stubber' | 'plasma' | 'slugga' | 'shoota' | 'explosion' | 'melee' | 'chainsword' | 'waaagh' | 'whistle' | 'click' | 'horn' | 'death' | 'jet' | 'pod';
+type Kind = 'las' | 'bolter' | 'hbolter' | 'stubber' | 'plasma' | 'slugga' | 'shoota' | 'explosion' | 'melee' | 'chainsword' | 'waaagh' | 'whistle' | 'click' | 'horn' | 'death' | 'jet' | 'pod' | 'cannon' | 'lascannon';
 
 export class Audio {
   ctx: AudioContext | null = null;
@@ -53,7 +53,7 @@ export class Audio {
     if (!this.ctx || this.ctx.state !== 'running') return;
     const c = this.ctx, t = c.currentTime;
     // throttle identical sounds so 100 lasguns do not clip
-    const gap = { las: 0.03, bolter: 0.04, hbolter: 0.035, stubber: 0.03, plasma: 0.08, slugga: 0.04, shoota: 0.04, explosion: 0.08, melee: 0.05, chainsword: 0.12, waaagh: 1.5, whistle: 1, click: 0.02, horn: 2, death: 0.12, jet: 1, pod: 1 }[kind];
+    const gap = { las: 0.03, bolter: 0.04, hbolter: 0.035, stubber: 0.03, plasma: 0.08, slugga: 0.04, shoota: 0.04, explosion: 0.08, melee: 0.05, chainsword: 0.12, waaagh: 1.5, whistle: 1, click: 0.02, horn: 2, death: 0.12, jet: 1, pod: 1, cannon: 0.15, lascannon: 0.1 }[kind];
     if (t - (this.last.get(kind) ?? -1) < gap) return;
     this.last.set(kind, t);
     let g = vol, pan = 0;
@@ -114,6 +114,8 @@ export class Audio {
       case 'jet': nz('bandpass', 650, 0.45, 2.4, 0.9, 0.5); nz('lowpass', 260, 0.7, 2.6, 0.7, 0.6); osc('sawtooth', 230, 75, 2.3, 0.07, 0.4); break;
       case 'pod': nz('highpass', 1800, 0.6, 2.2, 0.5, 1.6); osc('sawtooth', 900, 140, 2.3, 0.06, 1.8); break;
       case 'death': nz('lowpass', 700, 1, 0.25, 0.2); osc('sawtooth', 160, 80, 0.3, 0.06, 0.02); break;
+      case 'cannon': nz('lowpass', 380, 0.7, 1.4, 1.2, 0.004); osc('sine', 55, 22, 1.0, 1.0); nz('bandpass', 900, 0.8, 0.35, 0.6); nz('highpass', 2500, 0.7, 0.06, 0.4); break;
+      case 'lascannon': osc('sawtooth', 2400, 120, 0.45, 0.25); osc('sine', 300, 60, 0.5, 0.4); nz('bandpass', 1800, 1.5, 0.25, 0.3); break;
     }
   }
 

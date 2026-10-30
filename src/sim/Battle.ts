@@ -1,7 +1,7 @@
 import { BattleMap, PLAY } from '../world/MapGen';
 import { mulberry32 } from '../world/noise';
 import { Nav } from './Nav';
-import { WEAPONS, SOLDIERS, UNITS, ABILITIES, FACTIONS, type Scenario, type SoldierDef, type UnitTemplate, type WeaponDef, type FormationId, type FactionId, type AbilityId } from './data';
+import { WEAPONS, SOLDIERS, UNITS, ABILITIES, FACTIONS, type Scenario, type SoldierDef, type UnitTemplate, type WeaponDef, type FormationId, type FactionId, type AbilityId, type MountDef } from './data';
 import { newAnim, play, playUpper, type Anim, type ClipTable, type ClipMeta } from './anim';
 
 // ============================================================================ types
@@ -90,12 +90,19 @@ export interface Unit {
   moving: boolean;
   selected: boolean;
   label: string;
+  /** a vehicle unit (one Soldier per tank, driven by updateVehicle) */
+  vehicle: boolean;
 }
 
-export interface Shot { from: Soldier; target: Soldier; tx: number; ty: number; tz: number; t: number; hit: boolean; w: WeaponDef; pistol: boolean }
+export interface Shot { from: Soldier; target: Soldier; tx: number; ty: number; tz: number; t: number; hit: boolean; w: WeaponDef; pistol: boolean; mount?: MountDef['id'] }
+
+/** One vehicle weapon: cooldown and burst state. */
+export interface MountState { def: MountDef; w: WeaponDef; cool: number; burst: number; gap: number }
+/** Live state of a vehicle (the renderer reads turret / speed / travelled for traverse, track scroll and recoil). */
+export interface VState { turret: number; speed: number; turnRate: number; travelled: number; stuck: number; mounts: MountState[]; tgt: Soldier | null; los: boolean }
 
 export type BattleEvent =
-  | { type: 'shot'; s: Soldier; w: WeaponDef; pistol: boolean; tx: number; ty: number; tz: number; dur: number }
+  | { type: 'shot'; s: Soldier; w: WeaponDef; pistol: boolean; tx: number; ty: number; tz: number; dur: number; mount?: MountDef['id'] }
   | { type: 'impact'; x: number; y: number; z: number; w: WeaponDef; hit: boolean; target: Soldier | null }
   | { type: 'death'; s: Soldier }
   | { type: 'melee'; s: Soldier; foe: Soldier; hit: boolean }
@@ -128,6 +135,13 @@ export const meleeCap = (o: { def: { melee: { mass: number } } }) => { const m =
 // ============================================================================ battle
 export class Battle {
   units: Unit[] = [];
+  /** vehicles (tanks) by their hull soldier */
+  vstate = new Map<Soldier, VState>();
+  /** destroyed vehicles: burnt-out hulls that block movement */
+  wrecks: Soldier[] = [];
+  private vehicleCount = 0;
+  /** explosions queued while iterating (a tank blowing up mid-update), resolved at the end of the tick */
+  private pendingBlasts: [number, number, number, number, number, number][] = [];
   soldiers: Soldier[] = [];
   shots: Shot[] = [];
   events: BattleEvent[] = [];
@@ -177,7 +191,7 @@ export class Battle {
       order: { type: 'idle' }, path: [], pathI: 0, repathT: 0, run: false, fireAtWill: true, target: null, charging: false,
       morale: tpl.morale, mstate: 'steady', routs: 0, routT: 0, suppression: 0, fatigue: 0, inMelee: false,
       kills: 0, losses: 0, lossLog: [], killLog: [], abilityCd: 0, abilityT: 0, buffs: { waaagh: 0, aim: 0 }, attackedRear: 0,
-      maxRange: 0, meleeOnly: true, meleeMode: false, guard: false, skirmish: false, skirmT: 0, moving: false, selected: false, label: tpl.short,
+      maxRange: 0, meleeOnly: true, meleeMode: false, guard: false, skirmish: false, skirmT: 0, moving: false, selected: false, label: tpl.short, vehicle: false,
     };
     const defs: SoldierDef[] = [];
     for (const [id, n] of tpl.members) for (let i = 0; i < n; i++) defs.push(SOLDIERS[id]);
@@ -197,6 +211,11 @@ export class Battle {
       if (!u.leader && (d.role === 'leader' || d.role === 'officer' || d.role === 'boss')) u.leader = s;
       const w = d.weapon ? WEAPONS[d.weapon] : d.pistol ? WEAPONS[d.pistol] : null;
       if (d.weapon) { u.meleeOnly = false; u.maxRange = Math.max(u.maxRange, WEAPONS[d.weapon].range); }
+      if (d.vehicle) {
+        u.vehicle = true; u.meleeOnly = false;
+        for (const m of d.vehicle.mounts) u.maxRange = Math.max(u.maxRange, WEAPONS[m.weapon].range);
+        this.vstate.set(s, { turret: yaw, speed: 0, turnRate: 0, travelled: 0, stuck: 0, tgt: null, los: false, mounts: d.vehicle.mounts.map((m) => ({ def: m, w: WEAPONS[m.weapon], cool: this.rnd() * 2, burst: 0, gap: 0 })) });
+      }
       void w;
       u.soldiers.push(s);
       this.soldiers.push(s);
@@ -215,6 +234,7 @@ export class Battle {
   // ------------------------------------------------------------------ orders (player + AI)
   order(u: Unit, o: Order) {
     if (u.mstate === 'routing' || u.mstate === 'gone' || u.mstate === 'shattered') return;
+    if (u.vehicle) { o = { ...o, charge: false }; u.meleeMode = false; }   // tanks shoot; they never charge into melee
     const L = u.leader;
     if (L && L.alive && !L.foe && o.type !== 'idle' && (u.order.type !== o.type || u.order.target !== o.target)) {
       if (Math.hypot(L.vx, L.vz) > 0.6) playUpper(L.anim, 'command', this.clip(L, 'command').dur / 1.15, 1.15); else play(L.anim, 'command', 1.15, 0.15, true);
@@ -244,7 +264,7 @@ export class Battle {
   }
 
   /** Attackers that can reach a soldier at once; a man down in a trench can only be hit from the parapet in front. */
-  capFor(o: Soldier) { const c = meleeCap(o); return this.map.inTrench(o.x, o.z) ? Math.max(1, c - 1) : c; }
+  capFor(o: Soldier) { if (o.def.vehicle) return 8; const c = meleeCap(o); return this.map.inTrench(o.x, o.z) ? Math.max(1, c - 1) : c; }
 
   setFormation(u: Unit, f: FormationId) { u.formation = f; this.layout(u, false); }
 
@@ -331,8 +351,9 @@ export class Battle {
     for (const o of this.soldiers) if (o.alive && o.foe && o.foe.alive) this.attackers.set(o.foe, (this.attackers.get(o.foe) ?? 0) + 1);
     this.routeBudget = 14;
     for (const u of this.units) this.updateUnit(u, dt);
-    for (const s of this.soldiers) this.updateSoldier(s, dt);
+    for (const s of this.soldiers) { if (s.def.vehicle) this.updateVehicle(s, dt); else this.updateSoldier(s, dt); }
     this.updateShots();
+    this.flushBlasts();
     this.moraleT -= dt;
     if (this.moraleT <= 0) { this.moraleT = 0.5; for (const u of this.units) this.updateMorale(u, 0.5); this.checkVictory(); }
   }
@@ -341,8 +362,10 @@ export class Battle {
 
   private rebuildHash() {
     this.hash.clear();
+    this.vehicleCount = 0;
     for (const s of this.soldiers) {
       if (!s.alive) continue;
+      if (s.def.vehicle) this.vehicleCount++;
       const k = Math.floor((s.x + 300) / SPATIAL) * 1000 + Math.floor((s.z + 300) / SPATIAL);
       const b = this.hash.get(k);
       if (b) b.push(s); else this.hash.set(k, [s]);
@@ -561,14 +584,15 @@ export class Battle {
     if (knocked.has(s) || (s.hitT > 0 && s.anim.clip === 'getup')) { s.vx = 0; s.vz = 0; s.foe = null; return; }
 
     // ---------- melee
-    if (s.foe && (!s.foe.alive || dist(s, s.foe) > s.def.melee.reach + 1.4)) s.foe = null;
+    if (s.foe && (!s.foe.alive || this.gap(s, s.foe) > s.def.melee.reach + 1.4)) s.foe = null;
     if (!s.foe && u.mstate !== 'routing') {
       const engage = u.inMelee || u.charging || melee(u) || u.order.type === 'attack';
       const R = s.def.melee.reach + (engage ? 0.9 : 0.4);
       let best: Soldier | null = null, bd = 1e9, nearest: Soldier | null = null, nd = R;
-      this.near(s.x, s.z, R, (o) => {
+      this.near(s.x, s.z, R + (this.vehicleCount ? 3.6 : 0), (o) => {
         if (o.side === s.side || !o.alive) return;
-        const d = dist(s, o);
+        const d = o.def.vehicle ? this.gap(s, o) : dist(s, o);
+        if (o.def.vehicle && d > R) return;
         if (d < nd) { nd = d; nearest = o; }
         const crowd = this.attackers.get(o) ?? 0;
         if (crowd >= this.capFor(o)) return;
@@ -585,7 +609,7 @@ export class Battle {
         // first blows are staggered so a whole rank never swings in lockstep
         s.meleeT = Math.max(s.meleeT, this.rnd() * 0.7);
         if (s.chargeT > 0 && u.charging) this.chargeImpact(s, o);
-        if (!o.foe) o.foe = s;
+        if (!o.foe && !o.def.vehicle) o.foe = s;
         const ang = Math.abs(angDiff(o.unit.yaw, Math.atan2(s.x - o.x, s.z - o.z)));
         if (ang > 2.2) o.unit.attackedRear = 3;
       }
@@ -597,12 +621,14 @@ export class Battle {
     if (s.foe) {
       s.state = 'melee';
       const f = s.foe;
-      const d = dist(s, f);
-      s.yaw = turn(s.yaw, Math.atan2(f.x - s.x, f.z - s.z), dt * 7);
+      // a tank is fought along its hull, not at its centre
+      let fx = f.x, fz = f.z, dc = dist(s, f), d = dc;
+      if (f.def.vehicle) { [fx, fz] = this.axisPoint(f, s.x, s.z); dc = Math.max(0.01, Math.hypot(fx - s.x, fz - s.z)); d = dc - f.def.vehicle.radius; }
+      s.yaw = turn(s.yaw, Math.atan2(fx - s.x, fz - s.z), dt * 7);
       // keep at striking distance
       const want = s.def.melee.reach * 0.75;
       const k = (d - want) * 2.5;
-      this.moveToward(s, s.x + (f.x - s.x) / Math.max(d, 0.01) * k * 0.5, s.z + (f.z - s.z) / Math.max(d, 0.01) * k * 0.5, Math.min(2.5, Math.abs(k)), dt, true);
+      this.moveToward(s, s.x + (fx - s.x) / Math.max(dc, 0.01) * k * 0.5, s.z + (fz - s.z) / Math.max(dc, 0.01) * k * 0.5, Math.min(2.5, Math.abs(k)), dt, true);
       s.meleeT -= dt;
       if (s.meleeT <= 0 && s.hitT <= 0 && s.strikeT < 0) {
         const heavyChance = s.def.role === 'boss' || s.def.role === 'leader' || s.def.role === 'officer' ? 0.3 : s.def.melee.mass >= 2.5 ? 0.12 : 0.04;
@@ -735,8 +761,15 @@ export class Battle {
     // separation (keeps figures from overlapping)
     const R = Math.max(0.85, s.def.scale * 0.85) * (s.def.role === 'boss' ? 1.5 : 1);
     let px = 0, pz = 0;
-    this.near(s.x, s.z, R + 0.6, (o) => {
+    this.near(s.x, s.z, R + 0.6 + (this.vehicleCount ? 3.6 : 0), (o) => {
       if (o === s || !o.alive) return;
+      if (o.def.vehicle) {
+        // tanks shove infantry out of the way (capsule around the hull axis)
+        const [ax, az] = this.axisPoint(o, s.x, s.z);
+        const ox = s.x - ax, oz = s.z - az, od = Math.hypot(ox, oz), rr = R * 0.5 + o.def.vehicle.radius;
+        if (od < rr && od > 1e-4) { const k = (rr - od) / rr; px += ox / od * k * 2.5; pz += oz / od * k * 2.5; }
+        return;
+      }
       const ox = s.x - o.x, oz = s.z - o.z;
       const od = Math.hypot(ox, oz);
       const rr = R * 0.5 + Math.max(0.85, o.def.scale * 0.85) * (o.def.role === 'boss' ? 1.5 : 1) * 0.5 + 0.1;
@@ -751,7 +784,7 @@ export class Battle {
     s.vx += (vx - s.vx) * a; s.vz += (vz - s.vz) * a;
     let nx = s.x + s.vx * dt, nz = s.z + s.vz * dt;
     const r = 0.3 * s.def.scale * (s.def.role === 'boss' ? 1.5 : 1);
-    const bad = (x: number, z: number) => this.map.isBlocked(x, z) || this.map.isSolid(x, z, r);
+    const bad = (x: number, z: number) => this.map.isBlocked(x, z) || this.map.isSolid(x, z, r) || (this.wrecks.length > 0 && this.inWreck(x, z, r));
     if (bad(nx, nz)) {
       if (!bad(nx, s.z)) nz = s.z;
       else if (!bad(s.x, nz)) nx = s.x;
@@ -821,26 +854,28 @@ export class Battle {
     return true;
   }
 
-  private fireShot(s: Soldier, o: Soldier, w: WeaponDef, pistol: boolean, moving: boolean) {
+  private fireShot(s: Soldier, o: Soldier, w: WeaponDef, pistol: boolean, moving: boolean, mount?: MountDef['id']) {
     const u = s.unit;
     const d = dist(s, o);
     let acc = w.acc * (1 - w.falloff * Math.pow(Math.min(1, d / w.range), 1.4));
     acc *= 1 - u.suppression * 0.5;
-    if (moving) acc *= 0.6;
+    if (moving) acc *= s.def.vehicle ? 0.8 : 0.6;   // tank guns are stabilised
     if (u.fatigue > 0.7) acc *= 0.85;
     if (u.abilityT > 0 && u.tpl.ability === 'bolter_drill') acc += 0.1;
     if (u.buffs.aim > 0) acc += 0.15;
     if (u.mstate === 'wavering') acc *= 0.8;
-    acc *= 1 - this.map.coverAt(o.x, o.z) * 0.62;
+    if (o.def.vehicle) acc *= 1.5;                    // a tank is a big target and cover does not hide it
+    else acc *= 1 - this.map.coverAt(o.x, o.z) * 0.62;
     if (o.crouch) acc *= 0.85;
     if (o.def.role === 'boss') acc *= 1.3;
     const hit = this.rnd() < acc;
-    let tx = o.x, tz = o.z, ty = o.y + 1.0 * o.def.scale;
+    let tx = o.x, tz = o.z, ty = o.y + (o.def.vehicle ? 1.5 : 1.0 * o.def.scale);
     if (!hit) { const a = this.rnd() * Math.PI * 2, r = 0.6 + this.rnd() * 2.2; tx += Math.cos(a) * r; tz += Math.sin(a) * r; ty = this.map.heightAt(tx, tz) + this.rnd() * 0.6; }
     const dur = d / w.speed;
-    this.shots.push({ from: s, target: o, tx, ty, tz, t: this.time + dur, hit, w, pistol });
-    this.events.push({ type: 'shot', s, w, pistol, tx, ty, tz, dur });
+    this.shots.push({ from: s, target: o, tx, ty, tz, t: this.time + dur, hit, w, pistol, mount });
+    this.events.push({ type: 'shot', s, w, pistol, tx, ty, tz, dur, mount });
     s.firingT = 1.2;
+    if (s.def.vehicle) return;
     const clip = s.crouch ? 'cover_fire' : 'fire';
     if (s.anim.clip.startsWith('melee') || s.hitT > 0) return;
     // moving: legs keep walking, the upper body fires (recoil and all) on the animation layer
@@ -856,13 +891,19 @@ export class Battle {
       this.shots.splice(i, 1);
       const o = sh.target;
       const tu = o.unit;
-      const resist = tu.tpl.fearless ? 0.4 : tu.faction === 'krieg' ? 0.7 : tu.faction === 'orks' ? 0.45 : 1;
+      const resist = tu.vehicle ? 0.1 : tu.tpl.fearless ? 0.4 : tu.faction === 'krieg' ? 0.7 : tu.faction === 'orks' ? 0.45 : 1;
       tu.suppression = Math.min(1, tu.suppression + sh.w.suppress * (sh.hit ? 1.5 : 1) * resist);
       if (sh.w.splash) {
-        this.events.push({ type: 'explosion', x: sh.tx, y: sh.ty, z: sh.tz, r: sh.w.splash });
-        this.near(sh.tx, sh.tz, sh.w.splash, (v) => {
+        const R = sh.w.splash;
+        this.events.push({ type: 'explosion', x: sh.tx, y: sh.ty, z: sh.tz, r: R, color: sh.w.tracer === 'shell' ? 0xff8a30 : undefined });
+        this.near(sh.tx, sh.tz, R, (v) => {
           if (v.side === sh.from.side || !v.alive || v === o) return;
-          if (Math.hypot(v.x - sh.tx, v.z - sh.tz) < sh.w.splash!) this.damage(v, sh.w.dmg * 0.5, sh.w.ap, sh.from);
+          const dd = Math.hypot(v.x - sh.tx, v.z - sh.tz);
+          if (dd >= R) return;
+          // big blasts lose force with distance from the burst; small ones (plasma) hit their whole radius alike
+          this.damage(v, sh.w.dmg * 0.5 * (R >= 3 ? 1 - (dd / R) * 0.65 : 1), sh.w.ap, sh.from);
+          // a shell burst throws the men closest to it off their feet
+          if (R >= 3 && dd < R * 0.5 && v.alive && v.def.melee.mass < 5) this.knockDown(v);
         });
       }
       this.events.push({ type: 'impact', x: sh.tx, y: sh.ty, z: sh.tz, w: sh.w, hit: sh.hit && o.alive, target: sh.hit ? o : null });
@@ -872,6 +913,12 @@ export class Battle {
 
   damage(o: Soldier, dmg: number, ap: number, by: Soldier | null) {
     if (!o.alive) return;
+    if (o.def.vehicle) {
+      // armour: small arms barely scratch a tank, armour-piercing weapons (plasma, lascannon, power weapons) do full damage
+      o.hp -= dmg * Math.max(0.03, Math.min(1.15, (ap - 0.25) / 0.6));
+      if (o.hp <= 0) this.kill(o, by);
+      return;
+    }
     const save = Math.max(0, Math.min(0.95, o.def.armor - ap));
     o.hp -= dmg * (1 - save);
     if (o.hp <= 0) this.kill(o, by);
@@ -887,8 +934,13 @@ export class Battle {
   private kill(o: Soldier, by: Soldier | null) {
     o.alive = false; o.hp = 0; o.state = 'dead'; o.deadT = 0; o.foe = null; o.target = null;
     o.vx = o.vz = 0;
+    if (o.def.vehicle) {
+      // the hull brews up: a fuel / ammunition explosion around it, the wreck stays as an obstacle
+      this.wrecks.push(o);
+      this.pendingBlasts.push([o.x, o.z, 7, 70, 0.3, -1]);
+    }
     let death = this.rnd() < 0.5 ? 'death_a' : 'death_b';
-    if (by) {
+    if (by && !o.def.vehicle) {
       const ang = Math.abs(angDiff(o.yaw, Math.atan2(by.x - o.x, by.z - o.z)));
       death = ang < 0.9 ? 'death_a' : ang > 2.2 ? 'death_b' : 'death_c';
     }
@@ -913,8 +965,8 @@ export class Battle {
   }
 
   /** Off-map support blast (bomb, drop-pod impact): falloff damage, suppression and knockdown near the centre. */
-  blast(x: number, z: number, r: number, dmg: number, ap: number, side: number, knock = 0.55) {
-    this.events.push({ type: 'explosion', x, y: this.map.heightAt(x, z), z, r, color: 0xff8a30 });
+  blast(x: number, z: number, r: number, dmg: number, ap: number, side: number, knock = 0.55, color?: number) {
+    this.events.push({ type: 'explosion', x, y: this.map.heightAt(x, z), z, r, color: color ?? 0xff8a30 });
     this.rebuildHash();   // blasts can land between ticks (bomb timers)
     const hitUnits = new Set<Unit>();
     this.near(x, z, r, (v) => {
@@ -944,6 +996,140 @@ export class Battle {
     return u;
   }
 
+  // ------------------------------------------------------------------ vehicles
+  /** Nearest point on a vehicle's hull axis to x,z (its collision shape is a capsule around that axis). */
+  axisPoint(o: Soldier, x: number, z: number): [number, number] {
+    const V = o.def.vehicle!; const fx = Math.sin(o.yaw), fz = Math.cos(o.yaw);
+    const t = Math.max(-V.half, Math.min(V.half, (x - o.x) * fx + (z - o.z) * fz));
+    return [o.x + fx * t, o.z + fz * t];
+  }
+
+  /** Distance between bodies: centre to centre for infantry, to the hull surface for a vehicle. */
+  gap(s: Soldier, o: Soldier) {
+    if (!o.def.vehicle) return dist(s, o);
+    const [ax, az] = this.axisPoint(o, s.x, s.z);
+    return Math.max(0, Math.hypot(s.x - ax, s.z - az) - o.def.vehicle.radius);
+  }
+
+  /** Is a circle of radius r at x,z inside a burnt-out wreck? */
+  inWreck(x: number, z: number, r: number) {
+    for (const w of this.wrecks) {
+      if (Math.abs(w.x - x) > 7 || Math.abs(w.z - z) > 7) continue;
+      const [ax, az] = this.axisPoint(w, x, z);
+      if (Math.hypot(x - ax, z - az) < w.def.vehicle!.radius * 0.8 + r) return true;
+    }
+    return false;
+  }
+
+  /** Remaining strength 0..1: men left, or hull points for a vehicle unit. */
+  health(u: Unit) {
+    if (u.vehicle) { let hp = 0, max = 0; for (const s of u.soldiers) { max += s.maxHp; if (s.alive) hp += s.hp; } return max ? hp / max : 0; }
+    return u.soldiers.filter((s) => s.alive).length / u.initial;
+  }
+
+  private flushBlasts() {
+    while (this.pendingBlasts.length) { const [x, z, r, dmg, ap, side] = this.pendingBlasts.pop()!; this.blast(x, z, r, dmg, ap, side, 0.6, 0xff7a20); }
+  }
+
+  /** Drive a tank toward its unit anchor (tracked steering: turn on the spot, reverse for short hops back), then fight. */
+  private updateVehicle(s: Soldier, dt: number) {
+    if (!s.alive) { s.deadT += dt; return; }
+    const u = s.unit, V = s.def.vehicle!, vs = this.vstate.get(s)!;
+    s.losT -= dt; s.pathT -= dt;
+    let [tx, tz] = this.slotWorld(u, s);
+    if (s.pathT <= 0) { s.pathT = 0.6 + this.rnd() * 0.3; s.pathClear = this.nav.clear(s.x, s.z, tx, tz); }
+    if (!s.pathClear) {
+      const stale = !s.route.length || Math.hypot(s.routeTx - tx, s.routeTz - tz) > 4 || s.routeI >= s.route.length;
+      if (stale && this.routeBudget > 0) { this.routeBudget--; s.route = this.nav.path(s.x, s.z, tx, tz); s.routeI = 0; s.routeTx = tx; s.routeTz = tz; }
+      if (s.route.length && s.routeI < s.route.length) {
+        const [rx, rz] = s.route[s.routeI];
+        if (Math.hypot(rx - s.x, rz - s.z) < 2.5 && s.routeI < s.route.length - 1) s.routeI++;
+        tx = s.route[s.routeI][0]; tz = s.route[s.routeI][1];
+      }
+    } else if (s.route.length) s.route = [];
+    const dx = tx - s.x, dz = tz - s.z, d = Math.hypot(dx, dz);
+    let want = Math.atan2(dx, dz), dir = 1;
+    if (d < 14 && Math.abs(angDiff(s.yaw, want)) > 2.1) { dir = -1; want += Math.PI; }
+    const yaw0 = s.yaw;
+    let target = 0;
+    if (d > 1.0) {
+      s.yaw = turn(s.yaw, want, V.turn * dt);
+      const al = Math.cos(angDiff(s.yaw, want));
+      const top = this.moveSpeed(u, s, u.run ? 'run' : 'walk') * (dir < 0 ? 0.5 : 1);
+      if (al > 0.6) target = top * Math.min(1, d / 6) * ((al - 0.6) / 0.4) * dir;
+    } else s.yaw = turn(s.yaw, u.yaw, V.turn * 0.6 * dt);
+    vs.turnRate = angDiff(yaw0, s.yaw) / Math.max(dt, 1e-3);
+    vs.speed += Math.max(-4 * dt, Math.min(2.2 * dt, target - vs.speed));
+    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+    const nx = s.x + fx * vs.speed * dt, nz = s.z + fz * vs.speed * dt;
+    // wedged in a gap meant for infantry for a while: shrink the probe and push through
+    const squeeze = vs.stuck > 1.5;
+    const r = squeeze ? 0.6 : V.radius * 0.7;
+    const ahead = Math.sign(vs.speed || 1) * (V.half + V.radius * 0.6);
+    const blocked = (x: number, z: number) => this.map.isBlocked(x, z) || this.map.isSolid(x, z, r) || (!squeeze && this.map.isSolid(x + fx * ahead, z + fz * ahead, r * 0.8)) || this.inWreck(x, z, r);
+    if (Math.abs(vs.speed) > 0.01) {
+      if (!blocked(nx, nz)) { s.x = nx; s.z = nz; vs.travelled += vs.speed * dt; vs.stuck = Math.max(0, vs.stuck - dt); }
+      else { vs.speed *= 0.4; vs.stuck += dt; }
+    }
+    if (vs.stuck > 4) vs.stuck = 0;
+    // other tanks: keep hulls apart
+    for (const [o] of this.vstate) {
+      if (o === s || !o.alive) continue;
+      const ox = s.x - o.x, oz = s.z - o.z, od = Math.hypot(ox, oz), min = V.radius + o.def.vehicle!.radius + 0.6;
+      if (od < min && od > 0.01) { const k = Math.min(0.5, (min - od) * dt * 2); if (!this.map.isBlocked(s.x + ox / od * k, s.z + oz / od * k)) { s.x += ox / od * k; s.z += oz / od * k; } }
+    }
+    s.vx = fx * vs.speed; s.vz = fz * vs.speed;
+    s.y = this.map.heightAt(s.x, s.z);
+    s.state = Math.abs(vs.speed) > 0.3 ? 'move' : 'idle';
+    // tank shock: enemy infantry in the path of a moving tank are thrown aside
+    if (Math.abs(vs.speed) > 1.6) {
+      const sg = Math.sign(vs.speed), px = s.x + fx * sg * (V.half + 1.2), pz = s.z + fz * sg * (V.half + 1.2);
+      this.near(px, pz, 2.4, (o) => {
+        if (o.side === s.side || !o.alive || o.def.vehicle || o.def.melee.mass >= 4 || knocked.has(o) || Math.hypot(o.x - px, o.z - pz) > 2.2) return;
+        this.knockDown(o); this.damage(o, 22, 0.2, s);
+      });
+    }
+    this.vehicleFire(s, u, vs, dt);
+  }
+
+  /** Turret traverse and every weapon mount: the turret gun fires when laid on target, fixed guns inside their arcs. */
+  private vehicleFire(s: Soldier, u: Unit, vs: VState, dt: number) {
+    const V = s.def.vehicle!;
+    for (const m of vs.mounts) m.cool -= dt;
+    s.firingT = Math.max(0, s.firingT - dt);
+    const t = u.mstate === 'routing' ? null : u.target;
+    if (!t || !this.active(t)) { vs.tgt = null; s.target = null; }
+    else if (!vs.tgt || !vs.tgt.alive || vs.tgt.unit !== t || s.losT <= 0) {
+      s.losT = 0.8 + this.rnd() * 0.5;
+      let best: Soldier | null = null, bd = 1e9;
+      for (const o of t.soldiers) {
+        if (!o.alive) continue;
+        let d = dist(s, o);
+        if (o.foe && o.foe.side === s.side) d += 30;   // keep shells out of a scrum with friends in it
+        if (d < bd) { bd = d; best = o; }
+      }
+      vs.tgt = best; s.target = best;
+      vs.los = best ? this.map.los(s.x, s.z, best.x, best.z, 2.6, 1.2) : false;
+    }
+    const o = vs.tgt;
+    const want = o ? Math.atan2(o.x - s.x, o.z - s.z) : s.yaw;
+    vs.turret = turn(vs.turret, want, V.turretTurn * dt);
+    if (!o || !vs.los) { for (const m of vs.mounts) m.burst = 0; return; }
+    const d = dist(s, o);
+    const moving = Math.abs(vs.speed) > 0.5;
+    const rel = angDiff(s.yaw, want);
+    for (const m of vs.mounts) {
+      if (d > m.w.range) continue;
+      const aimed = m.def.id === 'turret' ? Math.abs(angDiff(vs.turret, want)) < 0.05 : rel >= m.def.arc![0] && rel <= m.def.arc![1];
+      if (!aimed) { m.burst = 0; continue; }
+      if (m.burst > 0) { m.gap -= dt; if (m.gap <= 0) { this.fireShot(s, o, m.w, false, moving, m.def.id); m.burst--; m.gap = m.w.gap; } continue; }
+      if (m.cool > 0) continue;
+      m.cool = m.w.cycle * (0.85 + this.rnd() * 0.3);
+      m.burst = m.w.burst - 1; m.gap = m.w.gap;
+      this.fireShot(s, o, m.w, false, moving, m.def.id);
+    }
+  }
+
   private chargeImpact(s: Soldier, o: Soldier) {
     const ms = s.def.melee.mass, mo = o.def.melee.mass;
     if (ms > mo * 1.25 && this.rnd() < 0.5) {
@@ -967,7 +1153,7 @@ export class Battle {
   private resolveStrike(s: Soldier) {
     const f = s.strikeFoe;
     s.strikeFoe = null;
-    if (!s.alive || !f || !f.alive || dist(s, f) > s.def.melee.reach + 1.0) return;
+    if (!s.alive || !f || !f.alive || this.gap(s, f) > s.def.melee.reach + 1.0) return;
     const u = s.unit;
     let atk = s.def.melee.atk - u.fatigue * 15;
     let mult = 1;
@@ -990,7 +1176,8 @@ export class Battle {
     }
     this.events.push({ type: 'melee', s, foe: f, hit });
     if (hit) {
-      this.damage(f, s.def.melee.dmg * mult * MELEE_SCALE * (0.85 + this.rnd() * 0.3), s.def.melee.ap, s);
+      // against a tank infantry use grenades and charges clamped to the hull: better penetration
+      this.damage(f, s.def.melee.dmg * mult * MELEE_SCALE * (0.85 + this.rnd() * 0.3), s.def.melee.ap + (f.def.vehicle ? 0.25 : 0), s);
       if ((s.def.role === 'boss' && this.rnd() < 0.5) || (s.def.melee.mass >= 2.8 && s.def.role !== 'boss' && this.rnd() < 0.25)) {
         // big hitters cleave a second victim
         let other: Soldier | null = null;

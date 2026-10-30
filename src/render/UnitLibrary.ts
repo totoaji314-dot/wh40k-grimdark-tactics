@@ -47,6 +47,19 @@ interface FactionMeta {
 
 const FPS = 30;
 
+/**
+ * Character lighting shared by every unit material (strategy-game readability): a soft fill that follows the camera so
+ * the visible side of a soldier never sinks to black, and a sun-coloured Fresnel rim that outlines silhouettes when
+ * the camera looks toward the sun. The game keeps sunDir/sunColor in sync with its sun light.
+ */
+export const heroLight = {
+  sunDir: { value: new THREE.Vector3(-0.86, 0.33, -0.3).normalize() },
+  sunColor: { value: new THREE.Color(1, 0.69, 0.44) },
+  skyColor: { value: new THREE.Color(0.55, 0.62, 0.78) },
+  fill: { value: 0.5 },
+  rim: { value: 1.0 },
+};
+
 export class UnitLibrary {
   variants = new Map<string, VariantAsset>();
   private loader = new GLTFLoader();
@@ -239,8 +252,30 @@ vVar = aVar;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vVar;')
         .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= vVar;');
+      addHeroLight(sh);
     }
   };
   mat.customProgramCacheKey = () => (depth ? 'skin-depth' : 'skin') + boneTex.uuid;
   return mat;
+}
+
+/** Inject the character lighting (camera fill + sun rim, see heroLight) into a lit built-in material's shader. */
+export function addHeroLight(sh: { uniforms: Record<string, THREE.IUniform>; fragmentShader: string }, fill = 1, rim = 1) {
+  sh.uniforms.uSunDir = heroLight.sunDir; sh.uniforms.uSunCol = heroLight.sunColor; sh.uniforms.uSkyCol = heroLight.skyColor;
+  sh.uniforms.uFill = heroLight.fill; sh.uniforms.uRim = heroLight.rim;
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSkyCol; uniform float uFill; uniform float uRim;')
+    .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+{
+  vec3 Vv = normalize(vViewPosition);
+  float nv = saturate(dot(normal, Vv));
+  vec3 sunV = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
+  float back = saturate(-dot(Vv, sunV));          // 1 when the camera looks into the sun (backlit)
+  // camera fill: lights what the player sees, stronger against the light; uses the base colour so metal armour gets it too
+  reflectedLight.indirectDiffuse += diffuseColor.rgb * uFill * ${fill.toFixed(2)} * (0.3 + 0.7 * nv) * (0.45 + 0.4 * back);
+  // silhouette rim: sun-coloured on the edges turned toward the sun, faint sky rim everywhere else
+  float rimF = pow(1.0 - nv, 3.0);
+  float sunSide = saturate(dot(normal, sunV) * 0.6 + 0.4);
+  totalEmissiveRadiance += rimF * uRim * ${rim.toFixed(2)} * (uSunCol * (0.25 + 1.5 * back) * sunSide + uSkyCol * 0.18);
+}`);
 }

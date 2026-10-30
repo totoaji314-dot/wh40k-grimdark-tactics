@@ -2,7 +2,7 @@
 // Numbers are tuned for Total War-like pacing (battles of a few minutes), not tabletop rules.
 
 export type FactionId = 'marines' | 'guard' | 'krieg' | 'orks';
-export type Tracer = 'las' | 'bolt' | 'hbolt' | 'stub' | 'plasma' | 'slug' | 'none';
+export type Tracer = 'las' | 'bolt' | 'hbolt' | 'stub' | 'plasma' | 'slug' | 'shell' | 'lascannon' | 'none';
 
 export interface WeaponDef {
   id: string; ko: string;
@@ -23,6 +23,18 @@ export interface WeaponDef {
   sound: string;
 }
 
+/** A weapon on a vehicle. Turret mounts traverse; fixed mounts fire inside an arc relative to the hull (radians, + = toward the vehicle's left / +x). */
+export interface MountDef { id: 'turret' | 'hull' | 'sponsonL' | 'sponsonR'; weapon: string; arc?: [number, number] }
+export interface VehicleDef {
+  model: 'leman_russ';
+  turn: number;        // hull turn rate (rad/s)
+  turretTurn: number;  // turret traverse (rad/s)
+  radius: number;      // half width of the hull (collision capsule radius)
+  half: number;        // half length of the capsule core
+  height: number;
+  mounts: MountDef[];
+}
+
 export interface MeleeDef { atk: number; def: number; dmg: number; ap: number; rate: number; mass: number; reach: number }
 
 export interface SoldierDef {
@@ -38,6 +50,7 @@ export interface SoldierDef {
   scale: number;
   role: 'trooper' | 'leader' | 'heavy' | 'special' | 'officer' | 'boss';
   aura?: number;         // morale aura radius
+  vehicle?: VehicleDef;  // tanks: one 'soldier' per vehicle, driven and fought by the vehicle code
 }
 
 export const WEAPONS: Record<string, WeaponDef> = {
@@ -50,12 +63,26 @@ export const WEAPONS: Record<string, WeaponDef> = {
   heavy_stubber: { id: 'heavy_stubber', ko: '헤비 스터버', range: 88, burst: 7, gap: 0.08, cycle: 3.6, dmg: 10, ap: 0.15, acc: 0.3, falloff: 0.45, suppress: 0.03, speed: 260, tracer: 'stub', moveFire: false, sound: 'stubber' },
   slugga: { id: 'slugga', ko: '슬러가', range: 22, burst: 1, gap: 0, cycle: 2.2, dmg: 10, ap: 0.1, acc: 0.24, falloff: 0.5, suppress: 0.004, speed: 160, tracer: 'slug', moveFire: true, sound: 'slugga' },
   shoota: { id: 'shoota', ko: '슈타', range: 46, burst: 4, gap: 0.12, cycle: 3.2, dmg: 11, ap: 0.1, acc: 0.3, falloff: 0.5, suppress: 0.006, speed: 170, tracer: 'slug', moveFire: true, sound: 'shoota' },
+  battle_cannon: { id: 'battle_cannon', ko: '배틀 캐논', range: 170, burst: 1, gap: 0, cycle: 7.5, dmg: 130, ap: 0.85, acc: 0.45, falloff: 0.35, suppress: 0.22, splash: 4.0, speed: 165, tracer: 'shell', moveFire: true, sound: 'cannon' },
+  lascannon: { id: 'lascannon', ko: '라스캐논', range: 150, burst: 1, gap: 0, cycle: 5.5, dmg: 170, ap: 1.0, acc: 0.62, falloff: 0.25, suppress: 0.04, speed: 520, tracer: 'lascannon', moveFire: true, sound: 'lascannon' },
   kombi: { id: 'kombi', ko: '콤비 슈타', range: 32, burst: 4, gap: 0.1, cycle: 2.6, dmg: 16, ap: 0.2, acc: 0.36, falloff: 0.5, suppress: 0.01, speed: 170, tracer: 'slug', moveFire: true, sound: 'shoota' },
 };
 
 const M = (atk: number, def: number, dmg: number, ap: number, rate: number, mass: number, reach = 1.6): MeleeDef => ({ atk, def, dmg, ap, rate, mass, reach });
 
+const LEMAN_RUSS: VehicleDef = {
+  model: 'leman_russ', turn: 0.55, turretTurn: 0.75, radius: 2.25, half: 1.3, height: 3.2,
+  mounts: [
+    { id: 'turret', weapon: 'battle_cannon' },
+    { id: 'hull', weapon: 'lascannon', arc: [-0.35, 0.35] },
+    { id: 'sponsonL', weapon: 'heavy_bolter', arc: [-0.3, 1.9] },
+    { id: 'sponsonR', weapon: 'heavy_bolter', arc: [-1.9, 0.3] },
+  ],
+};
+
 export const SOLDIERS: Record<string, SoldierDef> = {
+  leman_russ: { id: 'leman_russ', faction: 'guard', ko: '리만 러스', hp: 1700, armor: 0, walk: 3.0, run: 5.2, charge: 5.2, melee: M(0, 40, 0, 0, 0, 40, 0), scale: 1, role: 'heavy', vehicle: LEMAN_RUSS },
+  leman_russ_krieg: { id: 'leman_russ_krieg', faction: 'krieg', ko: '리만 러스 (크리그)', hp: 1700, armor: 0, walk: 3.0, run: 5.2, charge: 5.2, melee: M(0, 40, 0, 0, 0, 40, 0), scale: 1, role: 'heavy', vehicle: LEMAN_RUSS },
   marine: { id: 'marine', faction: 'marines', ko: '전술 마린', hp: 130, armor: 0.84, walk: 1.25, run: 4.4, charge: 6.0, weapon: 'bolter', melee: M(66, 62, 34, 0.35, 0.85, 3.0), scale: 1, role: 'trooper' },
   marine_plasma: { id: 'marine_plasma', faction: 'marines', ko: '플라즈마 마린', hp: 130, armor: 0.84, walk: 1.25, run: 4.4, charge: 6.0, weapon: 'plasma', melee: M(66, 62, 34, 0.35, 0.85, 3.0), scale: 1, role: 'special' },
   marine_heavy: { id: 'marine_heavy', faction: 'marines', ko: '헤비 볼터 마린', hp: 130, armor: 0.84, walk: 1.15, run: 3.9, charge: 5.2, weapon: 'heavy_bolter', melee: M(60, 58, 30, 0.35, 0.8, 3.0), scale: 1, role: 'heavy' },
@@ -97,6 +124,8 @@ export const UNITS: Record<string, UnitTemplate> = {
   command: { id: 'command', faction: 'guard', ko: '카디안 지휘 소대', short: '지휘', members: [['guard_officer', 1], ['guard_plasma', 2], ['guardsman', 22]], formation: 'line', spacing: 1.25, morale: 70, ability: 'take_aim', icon: '★', desc: '장교가 주변 부대의 사기와 명중률을 올린다.' },
   krieg_line: { id: 'krieg_line', faction: 'krieg', ko: '크리그 전열 중대', short: '전열', members: [['krieg_watchmaster', 1], ['krieg_heavy', 2], ['krieg', 22]], formation: 'line', spacing: 1.25, morale: 86, ability: 'bayonet', icon: '☩', desc: '총검 돌격과 참호 방어. 죽음을 두려워하지 않는다.' },
   krieg_heavy_co: { id: 'krieg_heavy_co', faction: 'krieg', ko: '크리그 중화기 중대', short: '중화기', members: [['krieg_watchmaster', 1], ['krieg_heavy', 10], ['krieg', 14]], formation: 'line', spacing: 1.3, morale: 84, ability: 'volley', icon: '☨', desc: '참호에서 헤비 스터버로 적을 갈아 넣는다.' },
+  leman_russ: { id: 'leman_russ', faction: 'guard', ko: '리만 러스 전차', short: '전차', members: [['leman_russ', 1]], formation: 'line', spacing: 8, morale: 90, fearless: true, icon: '◆', desc: '배틀 캐논(범위 폭발)·라스캐논·스폰슨 헤비 볼터. 소화기로는 거의 피해를 입지 않지만 근접전에서 포위되면 위험하다.' },
+  krieg_russ: { id: 'krieg_russ', faction: 'krieg', ko: '크리그 리만 러스', short: '전차', members: [['leman_russ_krieg', 1]], formation: 'line', spacing: 8, morale: 92, fearless: true, icon: '◆', desc: '크리그 기갑 연대의 리만 러스. 참호선 뒤에서 배틀 캐논으로 돌격을 분쇄한다.' },
   boyz: { id: 'boyz', faction: 'orks', ko: '오크 보이즈 몹', short: '보이즈', members: [['ork_nob', 1], ['ork_boy', 39]], formation: 'loose', spacing: 1.45, morale: 78, ability: 'waaagh', icon: '☠', desc: '거대한 무리로 돌격해 적을 짓밟는다.' },
   boyz_small: { id: 'boyz_small', faction: 'orks', ko: '오크 보이즈', short: '보이즈', members: [['ork_nob', 1], ['ork_boy', 19]], formation: 'loose', spacing: 1.45, morale: 74, ability: 'waaagh', icon: '☠', desc: '돌격 보이즈.' },
   shootas: { id: 'shootas', faction: 'orks', ko: '슈타 보이즈', short: '슈타', members: [['ork_nob', 1], ['ork_shoota', 29]], formation: 'loose', spacing: 1.5, morale: 72, ability: 'waaagh', icon: '✸', desc: '시끄럽고 부정확하지만 탄막이 많다.' },
@@ -138,15 +167,15 @@ export const SCENARIOS: Scenario[] = [
     side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
-    id: 'cadia_line', ko: '카디아의 방어선', desc: '아스트라 밀리타룸 100명이 폐허 지구에서 오크 100마리를 상대한다.',
+    id: 'cadia_line', ko: '카디아의 방어선', desc: '아스트라 밀리타룸 100명과 리만 러스 전차 1대가 폐허 지구에서 오크 100마리를 상대한다.',
     player: ['guard'], enemy: ['orks'], map: 'ruins', support: { air: 2 },
-    side0: [{ unit: 'infantry', x: -40, z: 70 }, { unit: 'heavy_platoon', x: 0, z: 78 }, { unit: 'infantry', x: 40, z: 70 }, { unit: 'command', x: 0, z: 100 }],
+    side0: [{ unit: 'infantry', x: -40, z: 70 }, { unit: 'heavy_platoon', x: 0, z: 78 }, { unit: 'infantry', x: 40, z: 70 }, { unit: 'command', x: 0, z: 100 }, { unit: 'leman_russ', x: -18, z: 100 }],
     side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
-    id: 'krieg_trench', ko: '크리그의 참호', desc: '데스 코어 오브 크리그 100명이 참호선을 지킨다. 오크 100마리가 몰려온다.',
+    id: 'krieg_trench', ko: '크리그의 참호', desc: '데스 코어 오브 크리그 100명과 리만 러스 1대가 참호선을 지킨다. 오크 100마리가 몰려온다.',
     player: ['krieg'], enemy: ['orks'], map: 'trenches', support: { air: 2 },
-    side0: [{ unit: 'krieg_line', x: -38, z: 57 }, { unit: 'krieg_heavy_co', x: 0, z: 57 }, { unit: 'krieg_line', x: 38, z: 57 }, { unit: 'krieg_line', x: 0, z: 89 }],
+    side0: [{ unit: 'krieg_line', x: -38, z: 57 }, { unit: 'krieg_heavy_co', x: 0, z: 57 }, { unit: 'krieg_line', x: 38, z: 57 }, { unit: 'krieg_line', x: 0, z: 89 }, { unit: 'krieg_russ', x: 24, z: 102 }],
     side1: [{ unit: 'boyz', x: -30, z: -120 }, { unit: 'shootas', x: 25, z: -125 }, { unit: 'nobz', x: 0, z: -140 }, { unit: 'boyz_small', x: 55, z: -115 }],
   },
   {
@@ -156,6 +185,7 @@ export const SCENARIOS: Scenario[] = [
       { unit: 'krieg_line', x: -70, z: 57 }, { unit: 'krieg_heavy_co', x: -35, z: 57 }, { unit: 'krieg_line', x: -105, z: 57 }, { unit: 'krieg_line', x: -55, z: 89 },
       { unit: 'infantry', x: 30, z: 66 }, { unit: 'heavy_platoon', x: 62, z: 70 }, { unit: 'infantry', x: 95, z: 66 }, { unit: 'command', x: 62, z: 96 },
       { unit: 'tactical', x: -10, z: 80 }, { unit: 'devastator', x: 5, z: 98 }, { unit: 'tactical', x: 12, z: 82 },
+      { unit: 'leman_russ', x: 45, z: 106 }, { unit: 'krieg_russ', x: -82, z: 102 },
     ],
     side1: [
       { unit: 'boyz', x: -90, z: -95 }, { unit: 'boyz', x: -45, z: -100 }, { unit: 'boyz', x: 0, z: -92 }, { unit: 'boyz', x: 45, z: -100 }, { unit: 'boyz', x: 90, z: -95 },
@@ -166,7 +196,7 @@ export const SCENARIOS: Scenario[] = [
     id: 'orks_vs_imperium', ko: '와아아그를 이끌어라', desc: '오크 워보스가 되어 카디안 방어선을 짓밟아라.',
     player: ['orks'], enemy: ['guard'], map: 'ruins', support: { air: 1 },
     side0: [{ unit: 'boyz', x: -30, z: 95 }, { unit: 'shootas', x: 25, z: 100 }, { unit: 'nobz', x: 0, z: 115 }, { unit: 'boyz_small', x: 55, z: 90 }],
-    side1: [{ unit: 'infantry', x: -40, z: -70 }, { unit: 'heavy_platoon', x: 0, z: -78 }, { unit: 'infantry', x: 40, z: -70 }, { unit: 'command', x: 0, z: -100 }],
+    side1: [{ unit: 'infantry', x: -40, z: -70 }, { unit: 'heavy_platoon', x: 0, z: -78 }, { unit: 'infantry', x: 40, z: -70 }, { unit: 'command', x: 0, z: -100 }, { unit: 'leman_russ', x: 16, z: -104 }],
   },
 ];
 

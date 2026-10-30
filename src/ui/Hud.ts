@@ -20,6 +20,7 @@ export interface HudActions {
   pause(): void;
   speed(): void;
   menu(): void;
+  cinematic: () => void;
 }
 
 export class Hud {
@@ -55,7 +56,7 @@ export class Hud {
     const tr = el('div', 'tr-buttons');
     this.pauseBtn = btn('❚❚', () => act.pause(), '일시정지 (Space)');
     this.speedBtn = btn('1×', () => act.speed(), '배속 (+/-)');
-    tr.append(this.pauseBtn, this.speedBtn, btn('☰', () => act.menu(), '메뉴 (Esc)'));
+    tr.append(btn('🎬', () => act.cinematic(), '시네마틱 모드 (K)'), this.pauseBtn, this.speedBtn, btn('☰', () => act.menu(), '메뉴 (Esc)'));
     this.root.appendChild(tr);
     this.fpsEl = el('div', 'fps'); this.fpsEl.style.display = 'none'; this.root.appendChild(this.fpsEl);
     this.cardBox = el('div', 'cards'); this.root.appendChild(this.cardBox);
@@ -183,8 +184,7 @@ export class Hud {
     d.style.display = '';
     d.style.left = `${sx}px`; d.style.top = `${sy}px`;
     d.classList.toggle('sel', selected);
-    const alive = u.soldiers.filter((s) => s.alive).length;
-    (d.querySelector('.hp > div') as HTMLDivElement).style.width = `${(alive / u.initial) * 100}%`;
+    (d.querySelector('.hp > div') as HTMLDivElement).style.width = `${this.b.health(u) * 100}%`;
     const st = d.querySelector('.stt') as HTMLDivElement;
     st.textContent = u.mstate === 'routing' ? '패주!' : u.inMelee ? '⚔' : u.mstate === 'wavering' ? '동요' : u.charging ? '돌격!' : '';
   }
@@ -201,9 +201,9 @@ export class Hud {
     for (const [id, c] of this.cards) {
       const u = b.units.find((x) => x.id === id)!;
       const alive = u.soldiers.filter((s) => s.alive).length;
-      (c.querySelector('.hb > div') as HTMLDivElement).style.width = `${(alive / u.initial) * 100}%`;
+      (c.querySelector('.hb > div') as HTMLDivElement).style.width = `${this.b.health(u) * 100}%`;
       (c.querySelector('.mb > div') as HTMLDivElement).style.width = `${Math.max(0, u.morale)}%`;
-      (c.querySelector('.cnt') as HTMLDivElement).textContent = String(alive);
+      (c.querySelector('.cnt') as HTMLDivElement).textContent = u.vehicle ? (alive ? `${Math.ceil(this.b.health(u) * 100)}%` : '격파') : String(alive);
       (c.querySelector('.st') as HTMLDivElement).textContent = u.mstate === 'routing' ? '⚑' : u.inMelee ? '⚔' : u.mstate === 'wavering' ? '!' : u.abilityCd <= 0 && u.tpl.ability ? '✦' : '';
       c.classList.toggle('sel', selected.has(u));
       c.classList.toggle('rout', u.mstate === 'routing' || u.mstate === 'shattered');
