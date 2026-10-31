@@ -1,0 +1,38 @@
+{
+ "street_lamp_01": {
+  "size": [
+   0.702,
+   3.87,
+   0.386
+  ],
+  "min": [
+   -0.351,
+   0,
+   -0.193
+  ],
+  "tris": 2752,
+  "authors": [
+   "Josh Dean"
+  ],
+  "source": "https://polyhaven.com/a/street_lamp_01",
+  "license": "CC0"
+ },
+ "portable_searchlight": {
+  "size": [
+   0.165,
+   0.185,
+   0.253
+  ],
+  "min": [
+   -0.083,
+   -0.083,
+   -0.127
+  ],
+  "tris": 2198,
+  "authors": [
+   "Elijah Cragg"
+  ],
+  "source": "https://polyhaven.com/a/portable_searchlight",
+  "license": "CC0"
+ }
+}
