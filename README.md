@@ -4,8 +4,9 @@ Total War: WARHAMMER 40,000 티저의 분위기를 목표로 만든 **브라우�
 PC(마우스·키보드)와 휴대폰·태블릿(터치)에서 설치 없이 링크 하나로 실행됩니다.
 
 > 비공식 팬 제작 프로젝트입니다. Games Workshop, Creative Assembly, SEGA와 관련이 없으며
-> 원작의 모델·텍스처·영상·사운드를 사용하지 않았습니다. 모든 3D 모델과 애니메이션은 이 저장소의
-> Blender 스크립트로 직접 생성했습니다.
+> 원작의 모델·텍스처·영상·사운드를 사용하지 않았습니다. 병사·전차·건물과 애니메이션은 이 저장소의
+> Blender 스크립트로 직접 만들었고, 소품·조각상·타일 텍스처는 Poly Haven·ambientCG(CC0), SMK 덴마크
+> 국립미술관(퍼블릭 도메인), Smithsonian 3D(CC0)에서 받았습니다. 목록: [docs/ASSET_MANIFEST.md](docs/ASSET_MANIFEST.md)
 
 **바로 플레이: https://totoaji314-dot.github.io/wh40k-grimdark-tactics/** (로그인·설치 없이 PC·휴대폰·태블릿에서 실행)
 
@@ -18,6 +19,14 @@ PC(마우스·키보드)와 휴대폰·태블릿(터치)에서 설치 없이 링
 | 근접전 | 참호선 | 휴대폰 화면 |
 |---|---|---|
 | ![근접전](docs/screenshots/melee.jpg) | ![참호](docs/screenshots/trenches.jpg) | ![모바일](docs/screenshots/mobile.jpg) |
+
+### 홀리 테라 — 황궁 전장 (커스텀 전투에서 선택)
+
+![영원의 문과 정문 앞 대로](docs/screenshots/terra_gate.jpg)
+
+| 옥좌의 전당과 황금 옥좌 | 광장의 황제 좌상 | 황궁 스카이라인 |
+|---|---|---|
+| ![옥좌의 전당](docs/screenshots/terra_throne.jpg) | ![광장](docs/screenshots/terra_plaza.jpg) | ![스카이라인](docs/screenshots/terra_skyline.jpg) |
 
 ## 진영과 병종
 

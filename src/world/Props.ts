@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { BASTION, TERRA_FOOT, type BattleMap, type Placement } from './MapGen';
+import type { BattleMap, Placement } from './MapGen';
 import { mulberry32 } from './noise';
 
 /**
@@ -14,8 +14,8 @@ export interface PropMeta { size: [number, number, number]; min: [number, number
 /** kit pieces whose procedural geometry the props replace */
 export const PROP_PIECES = new Set(['crates', 'barrels', 'barricade']);
 
-/** kit pieces the Holy Terra set draws instead (the new palace pieces have no kit geometry at all) */
-export const TERRA_PIECES = new Set([...Object.keys(TERRA_FOOT), 'lamp']);
+/** kit pieces the Holy Terra set draws instead (the palace itself is src/world/Palace.ts) */
+export const TERRA_PIECES = new Set(['lamp']);
 
 /** rz / rx: roll about the prop's own centre (barrel knocked over / tyre lying flat) */
 type Item = [id: string, x: number, y: number, z: number, yaw: number, scale?: number, rz?: number, rx?: number];
@@ -174,38 +174,14 @@ export async function buildProps(base: string, map: BattleMap, density: number, 
 }
 
 /**
- * Holy Terra palace district from downloaded CC0 models (terra.glb): fort-kit bastion walls and round towers, the open
- * iron gate with lion heads over it, postern doors, saints and an equestrian primarch, street lamps and searchlights.
+ * Holy Terra street furniture from downloaded CC0 models (terra.glb): the avenue's street lamps and the searchlights
+ * of the defence line. The palace, its gate, statues and garrison are src/world/Palace.ts.
  */
 export async function buildTerraProps(base: string, map: BattleMap, castShadow: boolean) {
   const { parts, meta } = await loadSet(base, 'terra');
-  // the horse scan is white porcelain: cast it in dark bronze on a stone plinth to sit among the palace monuments
-  for (const { mat } of parts.get('horse_statue_01') ?? []) {
-    if (mat.name.endsWith('_base')) mat.color.setRGB(0.34, 0.31, 0.28);
-    else { mat.color.setRGB(0.2, 0.15, 0.1); mat.metalness = 0.35; mat.roughness = 0.62; }
-  }
-  const S = BASTION.scale;
   const items: Item[] = [];
   const ground = (x: number, z: number) => map.heightAt(x, z);
-  for (const p of map.placements) {
-    switch (p.piece) {
-      // the fort wall runs along its local z: turn it to lie along the footprint's x
-      case 'bastion': items.push(toWorld(map, p, ['fort_wall', 0, -0.2, 0, Math.PI / 2, S])); break;
-      case 'bastion_tower': items.push(toWorld(map, p, ['fort_tower', 0, -0.2, 0, 0, S])); break;
-      case 'statue': items.push(toWorld(map, p, ['gothic_statue', 0, 0, 0, 0, 2.55])); break;
-      case 'equestrian': items.push(toWorld(map, p, ['horse_statue_01', 0, 0, 0, 0, 30])); break;
-      case 'lamp': items.push(toWorld(map, p, ['street_lamp_01', 0, 0, 0, 0, 1.5])); break;
-    }
-  }
-  // the gate: two iron leaves swung open into the palace, hinged on the gate towers' fronts
-  const zg = BASTION.z, gx = BASTION.gate, leaf = meta.large_iron_gate.size[0] * 3;
-  for (const sg of [-1, 1]) items.push(['large_iron_gate', sg * (gx - 0.3), ground(sg * gx, zg + leaf / 2) - 0.1, zg + leaf / 2, Math.PI / 2, 3]);
-  // lion heads over the gate on the outer faces of the gate towers; postern doors on their inner faces
-  const R = 15.838 * S / 2, tx = gx + R;
-  for (const sg of [-1, 1]) {
-    items.push(['lion_head', sg * tx, ground(sg * tx, zg - R) + 7.2, zg - R - 0.5, Math.PI, 10]);
-    items.push(['large_castle_door', sg * tx, ground(sg * tx, zg + R) - 0.05, zg + R - 0.15, 0, 1.45]);
-  }
+  for (const p of map.placements) if (p.piece === 'lamp') items.push(toWorld(map, p, ['street_lamp_01', 0, 0, 0, 0, 1.5]));
   // searchlights on the bunkers and along the defence line, all trained north at the enemy
   for (const p of map.placements) if (p.piece === 'bunker') items.push(['portable_searchlight', p.x + 2, p.y + 3.4, p.z, Math.PI + 0.3 * Math.sign(p.x), 6]);
   for (const x of [-96, -40, 40, 96]) items.push(['portable_searchlight', x, ground(x, 104), 104, Math.PI + x / 400, 6]);

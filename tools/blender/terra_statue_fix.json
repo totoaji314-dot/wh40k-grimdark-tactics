@@ -1,0 +1,6 @@
+{
+ "_note": "Per-statue orientation fixes for terra_landmarks.py. rot: explicit XYZ Euler (degrees) replacing the automatic stand-up; yaw: degrees about Z after standing (default 180, because the scans face -Y and the game's pieces face +Y).",
+ "god_king": {"rot": [0, 0, 0]},
+ "emperor_enthroned": {"yaw": 90},
+ "equestrian_commander": {"yaw": 270}
+}

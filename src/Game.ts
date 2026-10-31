@@ -12,6 +12,7 @@ import { Cinematic } from './core/Cinematic';
 import { localFactionOverrides } from './render/localAssets';
 import { buildScatter } from './world/Scatter';
 import { buildProps, buildTerraProps, PROP_PIECES, TERRA_PIECES } from './world/Props';
+import { buildPalace, loadPalaceMeta, palaceSentries, PALACE_PIECES, type PalaceMeta } from './world/Palace';
 import { buildSky } from './render/Sky';
 import { UnitLibrary, heroLight } from './render/UnitLibrary';
 import { UnitRenderer, type Figure } from './render/UnitRenderer';
@@ -19,7 +20,7 @@ import { Effects } from './render/Effects';
 import { CameraRig } from './core/CameraRig';
 import { Battle, type Unit, type Soldier } from './sim/Battle';
 import { Commander } from './sim/AI';
-import { stepAnim, type ClipTable } from './sim/anim';
+import { stepAnim, newAnim, type Anim, type ClipTable } from './sim/anim';
 import { SOLDIERS, UNITS, FACTIONS, ABILITIES, HERO_PREVIEW_VARIANT, type Scenario, type FormationId, type FactionId } from './sim/data';
 import { Hud } from './ui/Hud';
 import type { Audio } from './core/Audio';
@@ -65,6 +66,9 @@ export class Game {
   fx!: Effects;
   hud!: Hud;
   figures: Figure[] = [];
+  /** palace garrison idles (Holy Terra): stepped with the soldiers, never part of the battle */
+  npcAnims: Anim[] = [];
+  palace: Awaited<ReturnType<typeof buildPalace>> | null = null;
   figOf = new Map<Soldier, Figure>();
   vehicles!: VehicleViews;
   cine!: Cinematic;
@@ -149,6 +153,18 @@ export class Game {
       const f: Figure = { variant: s.def.id, x: s.x, y: s.y, z: s.z, yaw: s.yaw, scale: s.def.scale, tint: s.tint, anim: s.anim, visible: true };
       this.figures.push(f); this.figOf.set(s, f);
     }
+    // Holy Terra: the palace garrison stands guard at the gate and on the walls (not part of the battle), drawn by the
+    // unit renderer in whichever Imperial infantry model this battle loaded
+    const noProps = new URLSearchParams(location.search).has('noprops');
+    const palaceMeta: PalaceMeta | null = this.map.type === 'terra' && !noProps ? await loadPalaceMeta(BASE + 'assets/terra/').catch((err) => { console.warn('[palace] meta not loaded', err); return null; }) : null;
+    if (palaceMeta) {
+      const guard = ['marine', 'guardsman', 'krieg'].find((id) => this.lib.variants.has(id));
+      if (guard) for (const p of palaceSentries(this.map, palaceMeta)) {
+        const f: Figure = { variant: guard, x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: SOLDIERS[guard].scale, tint: 0.95 + Math.random() * 0.1, anim: newAnim('idle', Math.random() * 3), visible: true };
+        this.figures.push(f); this.npcAnims.push(f.anim);
+        counts[guard] = (counts[guard] ?? 0) + 1;
+      }
+    }
     // room for drop-pod reinforcements (one tactical squad per pod)
     for (const [id, n] of UNITS.tactical.members) counts[id] = (counts[id] ?? 0) + n * this.support.pods;
     this.units = new UnitRenderer(this.lib, counts, P.shadowSize > 0 && this.settings.shadows);
@@ -169,7 +185,9 @@ export class Game {
     // Holy Terra: the palace bastion, gate, statues and lamps come from their own downloaded model set
     const terra = this.map.type !== 'terra' || new URLSearchParams(location.search).has('noprops') ? null : await buildTerraProps(BASE + 'assets/props/', this.map, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[terra] not loaded', err); return null; });
     if (terra) { this.scene.add(terra.group); console.info('[terra]', terra.count, 'pieces,', Math.round(terra.tris), 'triangles'); }
-    const skip = new Set([...(props ? PROP_PIECES : []), ...(terra ? TERRA_PIECES : [])]);
+    const palace = palaceMeta ? await buildPalace(BASE + 'assets/terra/', this.map, palaceMeta, P.shadowSize > 0 && this.settings.shadows).catch((err) => { console.warn('[palace] not loaded', err); return null; }) : null;
+    if (palace) { this.scene.add(palace.group); this.palace = palace; console.info('[palace]', palace.count, 'instances of', palace.pieces, 'pieces'); }
+    const skip = new Set([...(props ? PROP_PIECES : []), ...(terra ? TERRA_PIECES : []), ...(palace ? PALACE_PIECES : [])]);
     const env = await buildEnv(BASE + 'assets/env/', this.map, P.envTex, P.shadowSize > 0 && this.settings.shadows, density === 1 ? 1 : density === 0.6 ? 0.5 : 0.25, [BASE + 'assets/vehicles/vehicles.glb'], skip);
     this.scene.add(env.group);
     this.makePiece = env.makePiece;
@@ -183,6 +201,8 @@ export class Game {
     this.vehicles = new VehicleViews(this.scene, env.makePiece, env.getMat, vehicleMeta, this.fx, (x, z) => this.map.heightAt(x, z));
     for (const s of this.battle.soldiers) if (s.def.vehicle) this.vehicles.add(s);
     for (const f of this.map.fires) { this.fx.addFire(f.x, f.y, f.z, f.s); this.fireSpots.push(f); }
+    // palace braziers: small steady fires (no point light each: they would crowd out the battle's own fires)
+    for (const f of palace?.fires ?? []) this.fx.addFire(f.x, f.y, f.z, f.s);
     for (const p of this.map.placements) {
       if (p.piece === 'smokestack') this.fx.addStack(p.x, p.y + 37, p.z, 1.3);
       if (p.piece === 'manufactorum') {
@@ -353,6 +373,7 @@ export class Game {
       if (n >= 6) this.acc = 0;
       const adt = dt * this.speed;
       for (const s of b.soldiers) if (s.alive || s.deadT < 4) stepAnim(s.anim, adt);
+      for (const a of this.npcAnims) stepAnim(a, adt);
     }
     if (this.cine.active) {
       // the rig keeps following the shot so shadows and the audio listener stay centred on it; the cinematic camera then takes over
@@ -363,6 +384,7 @@ export class Game {
     this.syncFigures();
     this.vehicles.update(this.paused || this.deploying ? 0 : dt * this.speed, b);
     this.units.update(this.camera, this.figures, this.preset.lodBias);
+    this.palace?.update(this.camera, this.paused ? 0 : dt, this.preset.lodBias);
     this.updateRings();
     this.fx.update(this.paused ? 0 : dt * this.speed, this.camera.position, [1.2, -0.6]);
     if (!this.paused && !this.deploying) this.updateStrikes(dt * this.speed);

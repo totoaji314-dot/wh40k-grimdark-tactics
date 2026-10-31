@@ -13,7 +13,12 @@ export async function loadEnvFootprints(base: string): Promise<Record<string, Fo
   return (await fetch(base + 'env.json')).json();
 }
 
-const KIT_FALLBACK: Record<string, string> = { bastion: 'wall', bastion_tower: 'watchtower', equestrian: 'monument', statue: 'monument' };
+/** Holy Terra palace pieces (src/world/Palace.ts) -> kit pieces drawn in their place if palace.glb fails to load,
+ *  so walls with collision never go invisible */
+const KIT_FALLBACK: Record<string, string> = {
+  gate_tower: 'watchtower', palace_wall: 'wall', palace_tower: 'watchtower', throne_hall: 'cathedral', palace_spire_a: 'cathedral',
+  palace_dome_b: 'cathedral', equestrian: 'monument', statue: 'monument', emperor_statue: 'monument', brazier: 'lamp',
+};
 
 /** De-quantise every attribute to plain Float32 (meshopt / quantize stores int16 positions). Must run before transforming. */
 const UV_SCALE: Record<string, number> = { stone: 3.2, ferrocrete: 3.0, roof: 2.5, sandbag: 1.4, wood: 1.6, rubble: 2.5 };

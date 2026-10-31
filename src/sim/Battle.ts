@@ -840,6 +840,12 @@ export class Battle {
       }
       s.target = best;
       s.losOk = best ? this.map.los(s.x, s.z, best.x, best.z) : false;
+      // the nearest foe is behind a monument or a wall: shoot the nearest one in sight instead (a few tries), so two
+      // units in range of each other never stand idle because each man's closest target happens to be hidden
+      if (best && !s.losOk) {
+        const alt = t.soldiers.filter((o) => o.alive && o !== best && !(o.foe && trenchLine)).sort((a, b) => dist(s, a) - dist(s, b));
+        for (let i = 0; i < Math.min(4, alt.length); i++) if (this.map.los(s.x, s.z, alt[i].x, alt[i].z)) { s.target = alt[i]; s.losOk = true; break; }
+      }
     }
     const o = s.target;
     if (!o || !s.losOk) return false;

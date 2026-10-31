@@ -1,0 +1,1260 @@
+{
+ "pieces": {
+  "athena_shield": {
+   "lods": [
+    "athena_shield__L0",
+    "athena_shield__L1",
+    "athena_shield__L2"
+   ],
+   "tris": [
+    13986,
+    3587,
+    2917
+   ],
+   "min": [
+    -1.14,
+    0.001,
+    -1.102
+   ],
+   "size": [
+    2.281,
+    5.199,
+    2.202
+   ],
+   "r": 3.04,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "brazier": {
+   "lods": [
+    "brazier__L0",
+    "brazier__L1",
+    "brazier__L2"
+   ],
+   "tris": [
+    276,
+    152,
+    114
+   ],
+   "min": [
+    -1.31,
+    0,
+    -1.293
+   ],
+   "size": [
+    2.62,
+    3.02,
+    2.585
+   ],
+   "r": 2.38,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "emperor_augustus": {
+   "lods": [
+    "emperor_augustus__L0",
+    "emperor_augustus__L1",
+    "emperor_augustus__L2"
+   ],
+   "tris": [
+    13999,
+    3599,
+    899
+   ],
+   "min": [
+    -1.585,
+    0,
+    -1.332
+   ],
+   "size": [
+    3.172,
+    5.601,
+    2.67
+   ],
+   "r": 3.48,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "emperor_enthroned": {
+   "lods": [
+    "emperor_enthroned__L0",
+    "emperor_enthroned__L1",
+    "emperor_enthroned__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    899
+   ],
+   "min": [
+    -4.137,
+    -0.007,
+    -5.016
+   ],
+   "size": [
+    8.253,
+    13.013,
+    10.034
+   ],
+   "r": 9.19,
+   "lodDist": [
+    41,
+    110
+   ]
+  },
+  "equestrian_commander": {
+   "lods": [
+    "equestrian_commander__L0",
+    "equestrian_commander__L1",
+    "equestrian_commander__L2"
+   ],
+   "tris": [
+    13999,
+    3600,
+    900
+   ],
+   "min": [
+    -1.831,
+    -0.018,
+    -3.503
+   ],
+   "size": [
+    3.667,
+    8.518,
+    6.985
+   ],
+   "r": 5.81,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "eternity_gate": {
+   "lods": [
+    "eternity_gate__L0",
+    "eternity_gate__L1",
+    "eternity_gate__L2"
+   ],
+   "tris": [
+    26424,
+    8706,
+    1584
+   ],
+   "min": [
+    -40,
+    -0.25,
+    -17.6
+   ],
+   "size": [
+    80,
+    101.25,
+    34.6
+   ],
+   "r": 66.8,
+   "lodDist": [
+    301,
+    735
+   ]
+  },
+  "god_king": {
+   "lods": [
+    "god_king__L0",
+    "god_king__L1",
+    "god_king__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -2.994,
+    0.001,
+    -0.7
+   ],
+   "size": [
+    5.987,
+    5.598,
+    1.401
+   ],
+   "r": 4.16,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "golden_throne": {
+   "lods": [
+    "golden_throne__L0",
+    "golden_throne__L1",
+    "golden_throne__L2"
+   ],
+   "tris": [
+    4203,
+    2055,
+    694
+   ],
+   "min": [
+    -9.602,
+    -0.11,
+    -4.328
+   ],
+   "size": [
+    19.203,
+    24.71,
+    16.13
+   ],
+   "r": 17.6,
+   "lodDist": [
+    79,
+    194
+   ]
+  },
+  "hero_apollo": {
+   "lods": [
+    "hero_apollo__L0",
+    "hero_apollo__L1",
+    "hero_apollo__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -1.776,
+    0,
+    -1.225
+   ],
+   "size": [
+    3.551,
+    5.602,
+    2.448
+   ],
+   "r": 3.53,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "hero_heracles": {
+   "lods": [
+    "hero_heracles__L0",
+    "hero_heracles__L1",
+    "hero_heracles__L2"
+   ],
+   "tris": [
+    13998,
+    3598,
+    898
+   ],
+   "min": [
+    -1.183,
+    0,
+    -0.983
+   ],
+   "size": [
+    2.369,
+    5.602,
+    1.966
+   ],
+   "r": 3.2,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "imperial_banner": {
+   "lods": [
+    "imperial_banner__L0",
+    "imperial_banner__L1",
+    "imperial_banner__L2"
+   ],
+   "tris": [
+    1325,
+    763,
+    203
+   ],
+   "min": [
+    -3.85,
+    -15.6,
+    -0.739
+   ],
+   "size": [
+    7.7,
+    16.15,
+    0.742
+   ],
+   "r": 8.95,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "palace_dome_b": {
+   "lods": [
+    "palace_dome_b__L0",
+    "palace_dome_b__L1",
+    "palace_dome_b__L2"
+   ],
+   "tris": [
+    3548,
+    1162,
+    613
+   ],
+   "min": [
+    -41.3,
+    0,
+    -34
+   ],
+   "size": [
+    82.6,
+    121,
+    65
+   ],
+   "r": 80.14,
+   "lodDist": [
+    361,
+    882
+   ]
+  },
+  "palace_spire_a": {
+   "lods": [
+    "palace_spire_a__L0",
+    "palace_spire_a__L1",
+    "palace_spire_a__L2"
+   ],
+   "tris": [
+    3910,
+    1132,
+    547
+   ],
+   "min": [
+    -41.3,
+    0,
+    -34
+   ],
+   "size": [
+    82.6,
+    198,
+    65
+   ],
+   "r": 112.08,
+   "lodDist": [
+    504,
+    1233
+   ]
+  },
+  "palace_tower": {
+   "lods": [
+    "palace_tower__L0",
+    "palace_tower__L1",
+    "palace_tower__L2"
+   ],
+   "tris": [
+    7478,
+    1394,
+    402
+   ],
+   "min": [
+    -12.38,
+    0,
+    -12.38
+   ],
+   "size": [
+    24.76,
+    77,
+    24.76
+   ],
+   "r": 42.29,
+   "lodDist": [
+    190,
+    465
+   ]
+  },
+  "palace_wall": {
+   "lods": [
+    "palace_wall__L0",
+    "palace_wall__L1",
+    "palace_wall__L2"
+   ],
+   "tris": [
+    1751,
+    785,
+    222
+   ],
+   "min": [
+    -13.5,
+    0,
+    -8.2
+   ],
+   "size": [
+    25.5,
+    35.016,
+    13.9
+   ],
+   "r": 22.75,
+   "lodDist": [
+    102,
+    250
+   ]
+  },
+  "pilgrim_kneel": {
+   "lods": [
+    "pilgrim_kneel__L0",
+    "pilgrim_kneel__L1",
+    "pilgrim_kneel__L2"
+   ],
+   "tris": [
+    258,
+    195,
+    113
+   ],
+   "min": [
+    -0.42,
+    0,
+    -0.519
+   ],
+   "size": [
+    0.84,
+    1.353,
+    1.039
+   ],
+   "r": 0.95,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "pilgrim_stand": {
+   "lods": [
+    "pilgrim_stand__L0",
+    "pilgrim_stand__L1",
+    "pilgrim_stand__L2"
+   ],
+   "tris": [
+    314,
+    200,
+    100
+   ],
+   "min": [
+    -0.36,
+    0,
+    -0.283
+   ],
+   "size": [
+    0.72,
+    1.78,
+    0.564
+   ],
+   "r": 1,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "rhino": {
+   "lods": [
+    "rhino__L0",
+    "rhino__L1",
+    "rhino__L2"
+   ],
+   "tris": [
+    1709,
+    715,
+    471
+   ],
+   "min": [
+    -1.99,
+    0.05,
+    -3.75
+   ],
+   "size": [
+    3.98,
+    3.03,
+    7.5
+   ],
+   "r": 4.51,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "saint_bartholomew": {
+   "lods": [
+    "saint_bartholomew__L0",
+    "saint_bartholomew__L1",
+    "saint_bartholomew__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -1.084,
+    0.009,
+    -0.706
+   ],
+   "size": [
+    2.168,
+    6.59,
+    1.413
+   ],
+   "r": 3.54,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "saint_george": {
+   "lods": [
+    "saint_george__L0",
+    "saint_george__L1",
+    "saint_george__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -0.994,
+    0,
+    -0.696
+   ],
+   "size": [
+    1.984,
+    5.403,
+    1.394
+   ],
+   "r": 2.96,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "saint_james": {
+   "lods": [
+    "saint_james__L0",
+    "saint_james__L1",
+    "saint_james__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -1.171,
+    0,
+    -0.523
+   ],
+   "size": [
+    2.341,
+    6.598,
+    1.044
+   ],
+   "r": 3.54,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "saint_kunigunde": {
+   "lods": [
+    "saint_kunigunde__L0",
+    "saint_kunigunde__L1",
+    "saint_kunigunde__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -0.806,
+    -0.001,
+    -0.698
+   ],
+   "size": [
+    1.611,
+    5.202,
+    1.394
+   ],
+   "r": 2.81,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "saint_peter": {
+   "lods": [
+    "saint_peter__L0",
+    "saint_peter__L1",
+    "saint_peter__L2"
+   ],
+   "tris": [
+    13999,
+    3599,
+    899
+   ],
+   "min": [
+    -1.246,
+    0,
+    -0.534
+   ],
+   "size": [
+    2.491,
+    6.6,
+    1.067
+   ],
+   "r": 3.57,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "saint_thomas": {
+   "lods": [
+    "saint_thomas__L0",
+    "saint_thomas__L1",
+    "saint_thomas__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -1.067,
+    0,
+    -0.725
+   ],
+   "size": [
+    2.133,
+    6.6,
+    1.452
+   ],
+   "r": 3.54,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "seated_prophet": {
+   "lods": [
+    "seated_prophet__L0",
+    "seated_prophet__L1",
+    "seated_prophet__L2"
+   ],
+   "tris": [
+    13999,
+    3599,
+    899
+   ],
+   "min": [
+    -2.383,
+    -0.001,
+    -2.381
+   ],
+   "size": [
+    4.768,
+    6.201,
+    4.768
+   ],
+   "r": 4.58,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "servo_skull": {
+   "lods": [
+    "servo_skull__L0",
+    "servo_skull__L1",
+    "servo_skull__L2"
+   ],
+   "tris": [
+    348,
+    256,
+    108
+   ],
+   "min": [
+    -0.255,
+    -0.125,
+    -0.293
+   ],
+   "size": [
+    0.51,
+    0.915,
+    0.586
+   ],
+   "r": 0.6,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "statue_plinth": {
+   "lods": [
+    "statue_plinth__L0",
+    "statue_plinth__L1",
+    "statue_plinth__L2"
+   ],
+   "tris": [
+    655,
+    421,
+    34
+   ],
+   "min": [
+    -1.7,
+    0,
+    -1.7
+   ],
+   "size": [
+    3.4,
+    2.6,
+    3.4
+   ],
+   "r": 2.73,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "throne_dais": {
+   "lods": [
+    "throne_dais__L0",
+    "throne_dais__L1",
+    "throne_dais__L2"
+   ],
+   "tris": [
+    764,
+    332,
+    156
+   ],
+   "min": [
+    -13.969,
+    0,
+    -15.2
+   ],
+   "size": [
+    27.938,
+    4.52,
+    29.169
+   ],
+   "r": 20.32,
+   "lodDist": [
+    91,
+    224
+   ]
+  },
+  "throne_hall": {
+   "lods": [
+    "throne_hall__L0",
+    "throne_hall__L1",
+    "throne_hall__L2"
+   ],
+   "tris": [
+    9220,
+    3550,
+    323
+   ],
+   "min": [
+    -30.8,
+    0,
+    -21.5
+   ],
+   "size": [
+    61.6,
+    56.5,
+    45.5
+   ],
+   "r": 47.58,
+   "lodDist": [
+    214,
+    523
+   ]
+  },
+  "victorious_soldier": {
+   "lods": [
+    "victorious_soldier__L0",
+    "victorious_soldier__L1",
+    "victorious_soldier__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -1.436,
+    0.001,
+    -1.165
+   ],
+   "size": [
+    2.875,
+    5.396,
+    2.337
+   ],
+   "r": 3.27,
+   "lodDist": [
+    40,
+    110
+   ]
+  },
+  "warrior_minerva": {
+   "lods": [
+    "warrior_minerva__L0",
+    "warrior_minerva__L1",
+    "warrior_minerva__L2"
+   ],
+   "tris": [
+    14000,
+    3600,
+    900
+   ],
+   "min": [
+    -1.16,
+    0,
+    -0.788
+   ],
+   "size": [
+    2.324,
+    5.594,
+    1.576
+   ],
+   "r": 3.13,
+   "lodDist": [
+    40,
+    110
+   ]
+  }
+ },
+ "anchors": {
+  "eternity_gate": {
+   "niche": [
+    {
+     "p": [
+      19.2,
+      18.4,
+      -14.9
+     ],
+     "yaw": 0,
+     "h": 6.6
+    },
+    {
+     "p": [
+      -19.2,
+      18.4,
+      -14.9
+     ],
+     "yaw": 0,
+     "h": 6.6
+    },
+    {
+     "p": [
+      30.8,
+      18.4,
+      -14.9
+     ],
+     "yaw": 0,
+     "h": 6.6
+    },
+    {
+     "p": [
+      -30.8,
+      18.4,
+      -14.9
+     ],
+     "yaw": 0,
+     "h": 6.6
+    }
+   ],
+   "brazier": [
+    {
+     "p": [
+      -9.5,
+      0,
+      -21
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      9.5,
+      0,
+      -21
+     ],
+     "yaw": 0
+    }
+   ],
+   "sentinel": [
+    {
+     "p": [
+      -6.8,
+      0,
+      -17.2
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      -10.8,
+      0,
+      2
+     ],
+     "yaw": -1.5708
+    },
+    {
+     "p": [
+      6.8,
+      0,
+      -17.2
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      10.8,
+      0,
+      2
+     ],
+     "yaw": 1.5708
+    }
+   ],
+   "banner": [
+    {
+     "p": [
+      -25,
+      51.4,
+      -14.7
+     ],
+     "yaw": 0,
+     "len": 13
+    },
+    {
+     "p": [
+      25,
+      51.4,
+      -14.7
+     ],
+     "yaw": 0,
+     "len": 13
+    }
+   ],
+   "sentry": [
+    {
+     "p": [
+      -25,
+      52.8,
+      0
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      25,
+      52.8,
+      0
+     ],
+     "yaw": 0
+    }
+   ]
+  },
+  "palace_wall": {
+   "banner": [
+    {
+     "p": [
+      0,
+      25.6,
+      -5.7
+     ],
+     "yaw": 0,
+     "len": 14
+    }
+   ],
+   "sentry": [
+    {
+     "p": [
+      -6,
+      26.8,
+      0
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      6,
+      26.8,
+      0
+     ],
+     "yaw": 0
+    }
+   ]
+  },
+  "palace_tower": {
+   "banner": [
+    {
+     "p": [
+      0,
+      30.5,
+      -11.787
+     ],
+     "yaw": 0,
+     "len": 12
+    }
+   ]
+  },
+  "throne_hall": {
+   "dais": [
+    {
+     "p": [
+      0,
+      0.3,
+      7
+     ],
+     "yaw": 0
+    }
+   ],
+   "brazier": [
+    {
+     "p": [
+      -16,
+      0.3,
+      -12
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      -16,
+      0.3,
+      0
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      -16,
+      0.3,
+      12
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      16,
+      0.3,
+      -12
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      16,
+      0.3,
+      0
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      16,
+      0.3,
+      12
+     ],
+     "yaw": 0
+    }
+   ],
+   "banner": [
+    {
+     "p": [
+      -15,
+      35.2,
+      -20.7
+     ],
+     "yaw": 0,
+     "len": 12
+    },
+    {
+     "p": [
+      15,
+      35.2,
+      -20.7
+     ],
+     "yaw": 0,
+     "len": 12
+    }
+   ]
+  },
+  "throne_dais": {
+   "brazier": [
+    {
+     "p": [
+      5.657,
+      3.6,
+      -5.657
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      -5.657,
+      3.6,
+      -5.657
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      -5.657,
+      3.6,
+      5.657
+     ],
+     "yaw": 0
+    },
+    {
+     "p": [
+      5.657,
+      3.6,
+      5.657
+     ],
+     "yaw": 0
+    }
+   ],
+   "throne": [
+    {
+     "p": [
+      0,
+      3.6,
+      0
+     ],
+     "yaw": 0
+    }
+   ]
+  },
+  "golden_throne": {
+   "occupant": [
+    {
+     "p": [
+      0,
+      4.8,
+      -0.5
+     ],
+     "yaw": 0,
+     "h": 6.2
+    }
+   ]
+  },
+  "brazier": {
+   "fire": [
+    {
+     "p": [
+      0,
+      3.1,
+      0
+     ],
+     "yaw": 0
+    }
+   ]
+  },
+  "statue_plinth": {
+   "statue": [
+    {
+     "p": [
+      0,
+      2.6,
+      0
+     ],
+     "yaw": 0
+    }
+   ]
+  }
+ },
+ "tints": {
+  "stone": [
+   0.8,
+   0.78,
+   0.74
+  ],
+  "stone_pale": [
+   0.95,
+   0.93,
+   0.88
+  ],
+  "stone_dark": [
+   0.55,
+   0.54,
+   0.55
+  ],
+  "marble": [
+   1,
+   1,
+   1
+  ],
+  "gold": [
+   1,
+   0.78,
+   0.36
+  ],
+  "bronze": [
+   0.85,
+   0.62,
+   0.42
+  ],
+  "iron": [
+   0.42,
+   0.42,
+   0.44
+  ],
+  "roof": [
+   0.4,
+   0.42,
+   0.46
+  ],
+  "cloth": [
+   0.55,
+   0.05,
+   0.04
+  ],
+  "paving": [
+   0.92,
+   0.9,
+   0.86
+  ],
+  "paint": [
+   0.13,
+   0.25,
+   0.62
+  ],
+  "robe": [
+   0.36,
+   0.28,
+   0.21
+  ],
+  "bone": [
+   0.93,
+   0.88,
+   0.76
+  ],
+  "floor": [
+   0.9,
+   0.9,
+   0.9
+  ],
+  "cable": [
+   0.3,
+   0.27,
+   0.25
+  ]
+ },
+ "source": "Modelled in code (tools/blender/terra_landmarks.py). Textures: ambientCG (CC0). Statues: SMK Statens Museum for Kunst (public domain) and Smithsonian 3D (CC0) scans, decimated."
+}

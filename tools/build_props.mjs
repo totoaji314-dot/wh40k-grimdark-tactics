@@ -2,7 +2,7 @@
 // D:/01_BoltgunReference/Downloaded_Assets/polyhaven). Each prop is simplified for many on-screen copies, its
 // textures shrunk to WebP, and all of them merged into one file with one root node per prop.
 //   node tools/build_props.mjs [props|terra] [sourceDir]
-// The 'terra' set (Holy Terra palace district: fort walls and towers, gate, statues, lamps) is loaded only on that map.
+// The 'terra' set (Holy Terra street lamps and searchlights) is loaded only on that map; the palace is build_palace.mjs.
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -27,15 +27,8 @@ SETS.props = {
   rusted_wheel_rim_01: [1100, 256],
 };
 SETS.terra = {
-  gothic_statue: [9000, 512],
-  horse_statue_01: [7000, 512],
-  lion_head: [5000, 512],
-  large_iron_gate: [6000, 1024],
-  large_castle_door: [4000, 512],
   street_lamp_01: [2600, 512],
   portable_searchlight: [2200, 512],
-  fort_wall: [3000, 1024, 'modular_fort_01', 'modular_fort_01_wall_thick_straight_01'],
-  fort_tower: [5000, 1024, 'modular_fort_01', 'modular_fort_01_tower_round'],
 };
 const PROPS = SETS[SET];
 

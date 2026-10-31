@@ -7,16 +7,26 @@ export interface Footprint { w: number; d: number; cover: number; block: boolean
 export interface Placement { piece: string; x: number; z: number; rot: number; y: number }
 export type MapType = 'ruins' | 'trenches' | 'terra';
 
-/** Holy Terra palace pieces drawn by the downloaded model set (src/world/Props.ts, terra.glb), not the environment kit.
- *  Sizes follow the models at the scale Props.ts draws them (fort kit x1.2). */
+/** Holy Terra palace pieces, drawn by src/world/Palace.ts from public/assets/terra/palace.glb (modelled in
+ *  tools/blender/terra_landmarks.py), not the environment kit. Sizes follow the models at 1 unit = 1 m. */
 export const TERRA_FOOT: Record<string, Footprint> = {
-  bastion: { w: 17.48, d: 5.0, cover: 0.85, block: true, h: 10.2 },
-  bastion_tower: { w: 16.5, d: 16.5, cover: 0.6, block: true, h: 16 },
-  equestrian: { w: 5.0, d: 3.4, cover: 0.6, block: true, h: 6.6 },
-  statue: { w: 3.8, d: 4.0, cover: 0.6, block: true, h: 4.5 },
+  // the Eternity Gate is drawn as one piece; its two towers block through the invisible gate_tower footprints and
+  // the 26 m passage between them stays open
+  eternity_gate: { w: 80, d: 34, cover: 0, block: false, h: 0 },
+  gate_tower: { w: 27.6, d: 34.4, cover: 0.6, block: true, h: 52 },
+  palace_wall: { w: 24, d: 12.4, cover: 0.85, block: true, h: 26 },
+  palace_tower: { w: 24.8, d: 24.8, cover: 0.7, block: true, h: 34 },
+  throne_hall: { w: 61.6, d: 45.5, cover: 0.8, block: true, h: 36 },
+  rhino: { w: 3.8, d: 7.5, cover: 0.7, block: true, h: 3 },
+  brazier: { w: 1.6, d: 1.6, cover: 0.15, block: true, h: 3 },
+  // statue = a saint or hero scan on a marble plinth (8 m); equestrian = the bronze commander on his rock (8.5 m);
+  // emperor_statue = the colossal enthroned Emperor on the plaza (13 m)
+  statue: { w: 3.6, d: 3.6, cover: 0.6, block: true, h: 8 },
+  equestrian: { w: 4.0, d: 7.2, cover: 0.6, block: true, h: 8.5 },
+  emperor_statue: { w: 8.6, d: 10.2, cover: 0.65, block: true, h: 13 },
 };
-/** fort kit scale and the bastion layout numbers Props.ts needs to dress the gate */
-export const BASTION = { scale: 1.2, z: 132, gate: 13 };
+/** where the palace stands: the gate across the avenue at z, the throne hall behind it */
+export const PALACE = { z: 132, hall: 180, gate: 13 };
 
 export const EXTENT = 440;          // terrain size (m)
 export const HALF = EXTENT / 2;
@@ -75,7 +85,7 @@ export class BattleMap {
     const terra = this.type === 'terra';
     add('cathedral', cx, -296, 0.04);
     // Terra: the Imperial Palace rises behind the defenders — a wall of sanctums and spires to the south
-    if (terra) for (let x = -300; x <= 300; x += 75) add('cathedral', x + (r() - 0.5) * 12, 300 + (r() - 0.5) * 14, Math.PI / 2 + (r() - 0.5) * 0.06);
+    if (terra) for (let x = -300, k = 0; x <= 300; x += 75, k++) add(k % 2 ? 'palace_dome_b' : 'palace_spire_a', x + (r() - 0.5) * 12, 300 + (r() - 0.5) * 14, (r() - 0.5) * 0.06);
     for (let gx = -O; gx <= O; gx += STEP) for (let gz = -O; gz <= O; gz += STEP) {
       const x = gx + (r() - 0.5) * 10, z = gz + (r() - 0.5) * 10;
       const m = Math.max(Math.abs(x), Math.abs(z));
@@ -364,33 +374,38 @@ export class BattleMap {
     this.roadLine([[-215, 22], [-30, 22], [30, 22], [215, 22]], 10);
     this.roadLine([[-215, -72], [215, -72]], 8);
     this.baseH = this.height.slice();
-    // the palace bastion across the south: round towers and thick curtain walls (fort kit x1.2), open only at the gate on the avenue
-    const S = BASTION.scale, WL = 14.563 * S, TR = 15.838 * S / 2, IN = 1.6;
+    // the Imperial Palace across the south: the Eternity Gate on the avenue, curtain walls and towers either side;
+    // inside, the throne hall of the Golden Throne between two towers, the courtyard with saints and braziers
+    const zG = PALACE.z;
+    this.flatten(0, zG, 84, 40, 0, null, 6);
+    this.place('eternity_gate', 0, zG, 0, false);
     for (const sg of [-1, 1]) {
-      let x = BASTION.gate + TR;
-      this.place('bastion_tower', sg * x, BASTION.z, 0);
-      for (let stretch = 0; stretch < 2; stretch++) {
-        let a = x + TR - IN;
-        for (let k = 0; k < 3; k++) { this.place('bastion', sg * (a + WL / 2), BASTION.z, 0); a += WL; }
-        x = a - IN + TR;
-        this.place('bastion_tower', sg * x, BASTION.z, 0);
+      this.place('gate_tower', sg * 26.2, zG, 0, false);
+      // from the gate outward: three walls, a tower, two walls, a tower, a wall (the last runs off the map edge)
+      let x = 37;
+      for (const seg of ['w', 'w', 'w', 't', 'w', 'w', 't', 'w']) {
+        if (seg === 'w') { this.place('palace_wall', sg * (x + 12), zG, 0); x += 24; } else { this.place('palace_tower', sg * (x + 12.2), zG, 0); x += 24.4; }
       }
+      this.place('brazier', sg * 9.5, zG - 21, 0, false);          // before the gate (the model's brazier anchors)
+      this.place('palace_tower', sg * 45, PALACE.hall - 12, 0);
+      this.place('brazier', sg * 9.5, PALACE.hall - 25, 0, false);  // at the throne hall's steps
+      this.place('statue', sg * 11, PALACE.hall - 31, -sg * Math.PI / 2);
+      this.place('cathedral', sg * 100, 172, Math.PI / 2);
+      // Rhinos of the palace garrison parked in the courtyard and behind the defence line
+      this.place('rhino', sg * 62, zG + 14, Math.PI / 2 + sg * 0.08, false);
+      this.place('rhino', sg * 52, zG - 24, sg * 0.15, false);
     }
-    // palace sanctums and chapels inside the wall
-    this.place('cathedral', -78, 170, Math.PI / 2);
-    this.place('cathedral', 78, 170, Math.PI / 2);
-    this.place('chapel', -28, 156, 0); this.place('chapel', 28, 156, 0);
-    this.place('monument', 0, 164, 0);
+    this.place('throne_hall', 0, PALACE.hall, 0);
     // statues of the Emperor's saints and primarchs line the avenue: great monuments alternating with saints on foot
     let alt = 0;
-    for (let z = -160; z <= 110; z += 27) {
+    for (let z = -160; z <= 90; z += 27) {   // stops short of the gate: its front is kept clear
       if (Math.abs(z - 22) < 14 || Math.abs(z + 72) < 12) continue;
       const piece = alt++ % 2 ? 'statue' : 'monument';
       this.place(piece, -15, z, piece === 'statue' ? -Math.PI / 2 : 0); this.place(piece, 15, z, piece === 'statue' ? Math.PI / 2 : 0);
     }
-    this.place('equestrian', 0, 22, 0); // the great plaza at the crossing: a primarch on horseback
-    this.place('equestrian', -30, 112, Math.PI); this.place('equestrian', 30, 112, Math.PI);   // before the gate
-    for (let z = -170; z <= 120; z += 18) { if (Math.abs(z - 22) < 10) continue; this.place('lamp', 10, z, -Math.PI / 2, false); this.place('lamp', -10, z + 9, Math.PI / 2, false); }
+    this.place('emperor_statue', 0, 22, 0); // the great plaza at the crossing: the Emperor enthroned, facing the enemy
+    this.place('equestrian', -30, 106, 0); this.place('equestrian', 30, 106, 0);   // before the gate, riding out north
+    for (let z = -170; z <= 100; z += 18) { if (Math.abs(z - 22) < 10) continue; this.place('lamp', 10, z, -Math.PI / 2, false); this.place('lamp', -10, z + 9, Math.PI / 2, false); }
     // the defenders' line in front of the wall
     for (let x = -120; x <= 120; x += 6) {
       if (Math.abs(x) < 12) continue;
@@ -399,8 +414,8 @@ export class BattleMap {
     }
     for (let x = -130; x <= 130; x += 13) if (Math.abs(x) > 14) this.place('tank_trap', x + r() * 3, 82 + r() * 4, r() * 3, false);
     this.place('bunker', -70, 116, Math.PI); this.place('bunker', 70, 116, Math.PI);
-    this.scatter('crates', 8, -110, 110, 104, 126);
-    this.scatter('barrels', 6, -110, 110, 104, 126);
+    this.scatter('crates', 8, -110, 110, 104, 119);
+    this.scatter('barrels', 6, -110, 110, 104, 119);
     // the besieged hab district to the north: palace precinct blocks, siege damage
     this.place('chapel', -58, -20, 0); this.place('chapel', 58, -28, Math.PI);
     this.place('hab', -62, -112, 0); this.place('hab', 60, -118, Math.PI / 2);
